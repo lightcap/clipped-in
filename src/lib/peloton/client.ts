@@ -5,6 +5,7 @@ import type {
   FtpTestResult,
   PelotonSearchParams,
   PelotonSearchResponse,
+  PelotonStack,
 } from "@/types/peloton";
 
 const PELOTON_API_URL = "https://api.onepeloton.com";
@@ -131,6 +132,77 @@ export class PelotonClient {
         // Stop if we hit an error (e.g., workout not found)
         console.error("Error fetching FTP history:", error);
         break;
+      }
+    }
+
+    return results;
+  }
+
+  // Stack Management Methods
+
+  async getStack(): Promise<PelotonStack | null> {
+    try {
+      const user = await this.getMe();
+      return this.fetch<PelotonStack>(`/api/user/${user.id}/stack`);
+    } catch (error) {
+      // User may not have a stack yet
+      console.error("Error fetching stack:", error);
+      return null;
+    }
+  }
+
+  async addToStack(rideId: string): Promise<boolean> {
+    try {
+      const user = await this.getMe();
+      await this.fetch(`/api/user/${user.id}/stack`, {
+        method: "POST",
+        body: JSON.stringify({ peloton_class_id: rideId }),
+      });
+      return true;
+    } catch (error) {
+      console.error("Error adding to stack:", error);
+      return false;
+    }
+  }
+
+  async removeFromStack(stackClassId: string): Promise<boolean> {
+    try {
+      const user = await this.getMe();
+      await this.fetch(`/api/user/${user.id}/stack/${stackClassId}`, {
+        method: "DELETE",
+      });
+      return true;
+    } catch (error) {
+      console.error("Error removing from stack:", error);
+      return false;
+    }
+  }
+
+  async clearStack(): Promise<boolean> {
+    try {
+      const stack = await this.getStack();
+      if (!stack || stack.classes.length === 0) return true;
+
+      // Remove each class from stack
+      for (const stackClass of stack.classes) {
+        await this.removeFromStack(stackClass.id);
+      }
+      return true;
+    } catch (error) {
+      console.error("Error clearing stack:", error);
+      return false;
+    }
+  }
+
+  async pushWorkoutsToStack(rideIds: string[]): Promise<{ success: string[]; failed: string[] }> {
+    const results = { success: [] as string[], failed: [] as string[] };
+
+    for (const rideId of rideIds) {
+      const added = await this.addToStack(rideId);
+      if (added) {
+        results.success.push(rideId);
+      } else {
+        results.failed.push(rideId);
       }
     }
 

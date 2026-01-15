@@ -1,0 +1,44 @@
+import { NextResponse } from "next/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+
+export async function PATCH(request: Request) {
+  try {
+    const body = await request.json();
+    const supabase = await createAdminClient();
+
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const updates: Record<string, unknown> = {};
+    if (body.display_name !== undefined) updates.display_name = body.display_name;
+
+    const { data: profile, error } = await supabase
+      .from("profiles")
+      .update(updates)
+      .eq("id", user.id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Failed to update profile:", error);
+      return NextResponse.json(
+        { error: "Failed to update profile" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ profile });
+  } catch (error) {
+    console.error("Update profile error:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}

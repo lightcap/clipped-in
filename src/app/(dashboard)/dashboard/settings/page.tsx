@@ -39,6 +39,7 @@ export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const router = useRouter();
   const [isSaving, setIsSaving] = useState(false);
+  const [displayName, setDisplayName] = useState(profile?.display_name || "");
   const [stackPushTime, setStackPushTime] = useState("00:00");
 
   const initials = profile?.display_name
@@ -46,6 +47,21 @@ export default function SettingsPage() {
     .map((n) => n[0])
     .join("")
     .toUpperCase() || "U";
+
+  const handleSaveProfile = async () => {
+    setIsSaving(true);
+    try {
+      await fetch("/api/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ display_name: displayName }),
+      });
+    } catch (error) {
+      console.error("Failed to save profile:", error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const handleSignOut = async () => {
     const supabase = createClient();
@@ -103,13 +119,14 @@ export default function SettingsPage() {
               <Label htmlFor="displayName">Display Name</Label>
               <Input
                 id="displayName"
-                defaultValue={profile?.display_name || ""}
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
                 placeholder="Your name"
               />
             </div>
           </div>
 
-          <Button disabled={isSaving}>
+          <Button disabled={isSaving} onClick={handleSaveProfile}>
             {isSaving ? "Saving..." : "Save Changes"}
           </Button>
         </CardContent>

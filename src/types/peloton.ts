@@ -108,3 +108,20 @@ export const MUSCLE_GROUPS = [
 ] as const;
 
 export type MuscleGroup = (typeof MUSCLE_GROUPS)[number]["id"];
+
+// Stack management types
+export interface PelotonStackClass {
+  id: string;
+  peloton_id: string;
+  title: string;
+  duration: number;
+  image_url: string;
+  instructor?: PelotonInstructor;
+  fitness_discipline: string;
+}
+
+export interface PelotonStack {
+  id: string;
+  classes: PelotonStackClass[];
+  total_classes: number;
+}

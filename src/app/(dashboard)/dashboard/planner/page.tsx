@@ -11,6 +11,8 @@ import {
   GripVertical,
   CalendarCheck,
   AlertCircle,
+  Loader2,
+  CheckCircle2,
 } from "lucide-react";
 import {
   format,
@@ -67,6 +69,8 @@ export default function PlannerPage() {
   const [currentWeek, setCurrentWeek] = useState(new Date());
   const [workouts, setWorkouts] = useState<PlannedWorkout[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isPushing, setIsPushing] = useState(false);
+  const [pushResult, setPushResult] = useState<{ success: boolean; message: string } | null>(null);
 
   const weekStart = startOfWeek(currentWeek, { weekStartsOn: 0 });
   const weekEnd = endOfWeek(currentWeek, { weekStartsOn: 0 });
@@ -130,6 +134,50 @@ export default function PlannerPage() {
       }
     } catch (error) {
       console.error("Failed to update workout:", error);
+    }
+  };
+
+  const handlePushToStack = async () => {
+    setIsPushing(true);
+    setPushResult(null);
+
+    try {
+      // Push tomorrow's workouts to stack
+      const tomorrow = format(new Date(), "yyyy-MM-dd");
+      const response = await fetch("/api/stack/push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date: tomorrow,
+          clearExisting: false,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setPushResult({
+          success: true,
+          message: data.message || `Pushed ${data.pushed} workout(s) to stack`,
+        });
+        // Refresh workouts to update pushed_to_stack status
+        fetchWorkouts();
+      } else {
+        setPushResult({
+          success: false,
+          message: data.error || "Failed to push workouts",
+        });
+      }
+    } catch (error) {
+      console.error("Failed to push to stack:", error);
+      setPushResult({
+        success: false,
+        message: "An error occurred while pushing to stack",
+      });
+    } finally {
+      setIsPushing(false);
+      // Clear the result after 5 seconds
+      setTimeout(() => setPushResult(null), 5000);
     }
   };
 
@@ -324,17 +372,53 @@ export default function PlannerPage() {
       {/* Stack Push Info */}
       <Card className="border-primary/20 bg-primary/5">
         <CardContent className="flex items-center gap-4 py-4">
-          <AlertCircle className="h-5 w-5 text-primary" />
-          <div>
-            <p className="font-medium text-foreground">
-              Automatic Stack Push
-            </p>
-            <p className="text-sm text-muted-foreground">
-              Your planned workouts will be automatically pushed to your Peloton stack each night at midnight.
-            </p>
+          {pushResult ? (
+            pushResult.success ? (
+              <CheckCircle2 className="h-5 w-5 text-green-500" />
+            ) : (
+              <AlertCircle className="h-5 w-5 text-destructive" />
+            )
+          ) : (
+            <AlertCircle className="h-5 w-5 text-primary" />
+          )}
+          <div className="flex-1">
+            {pushResult ? (
+              <>
+                <p className={cn(
+                  "font-medium",
+                  pushResult.success ? "text-green-500" : "text-destructive"
+                )}>
+                  {pushResult.success ? "Success!" : "Push Failed"}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {pushResult.message}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="font-medium text-foreground">
+                  Automatic Stack Push
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Your planned workouts will be automatically pushed to your Peloton stack each night at midnight.
+                </p>
+              </>
+            )}
           </div>
-          <Button variant="outline" className="ml-auto">
-            Push Now
+          <Button
+            variant="outline"
+            className="ml-auto gap-2"
+            onClick={handlePushToStack}
+            disabled={isPushing}
+          >
+            {isPushing ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Pushing...
+              </>
+            ) : (
+              "Push Now"
+            )}
           </Button>
         </CardContent>
       </Card>
