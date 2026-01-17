@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Search,
   User,
@@ -41,7 +41,7 @@ interface ClassResult {
   image_url: string;
   instructor_name: string;
   fitness_discipline: string;
-  muscle_group?: string;
+  fitness_discipline_display_name?: string;
 }
 
 const DURATIONS = [
@@ -63,75 +63,6 @@ const DISCIPLINES = [
   { value: "cardio", label: "Cardio" },
 ];
 
-// Mock class data for demonstration
-const MOCK_CLASSES: ClassResult[] = [
-  {
-    id: "1",
-    title: "20 min Arms & Shoulders",
-    description: "Focus on biceps, triceps, and shoulders with this targeted upper body workout.",
-    duration: 1200,
-    difficulty_estimate: 7.2,
-    image_url: "/api/placeholder/400/225",
-    instructor_name: "Adrian Williams",
-    fitness_discipline: "strength",
-    muscle_group: "arms",
-  },
-  {
-    id: "2",
-    title: "30 min Full Body Strength",
-    description: "Complete full body workout hitting all major muscle groups.",
-    duration: 1800,
-    difficulty_estimate: 7.8,
-    image_url: "/api/placeholder/400/225",
-    instructor_name: "Rad Lopez",
-    fitness_discipline: "strength",
-    muscle_group: "full_body",
-  },
-  {
-    id: "3",
-    title: "20 min Glutes & Legs",
-    description: "Lower body focused workout targeting glutes, quads, and hamstrings.",
-    duration: 1200,
-    difficulty_estimate: 8.1,
-    image_url: "/api/placeholder/400/225",
-    instructor_name: "Robin Arzon",
-    fitness_discipline: "strength",
-    muscle_group: "legs",
-  },
-  {
-    id: "4",
-    title: "15 min Core Strength",
-    description: "Intense core workout focusing on abs and obliques.",
-    duration: 900,
-    difficulty_estimate: 7.5,
-    image_url: "/api/placeholder/400/225",
-    instructor_name: "Olivia Amato",
-    fitness_discipline: "strength",
-    muscle_group: "core",
-  },
-  {
-    id: "5",
-    title: "45 min Power Zone Endurance",
-    description: "Build endurance with this zone 2-3 focused ride.",
-    duration: 2700,
-    difficulty_estimate: 6.8,
-    image_url: "/api/placeholder/400/225",
-    instructor_name: "Matt Wilpers",
-    fitness_discipline: "cycling",
-  },
-  {
-    id: "6",
-    title: "20 min Back & Biceps",
-    description: "Target your back and biceps with this focused upper body session.",
-    duration: 1200,
-    difficulty_estimate: 7.0,
-    image_url: "/api/placeholder/400/225",
-    instructor_name: "Jess Sims",
-    fitness_discipline: "strength",
-    muscle_group: "back",
-  },
-];
-
 export default function SearchPage() {
   const { isPelotonConnected } = useAuthStore();
   const [searchQuery, setSearchQuery] = useState("");
@@ -139,41 +70,71 @@ export default function SearchPage() {
   const [duration, setDuration] = useState<string>("");
   const [selectedMuscles, setSelectedMuscles] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [results, setResults] = useState<ClassResult[]>(MOCK_CLASSES);
+  const [results, setResults] = useState<ClassResult[]>([]);
+  const [totalResults, setTotalResults] = useState(0);
+  const [hasSearched, setHasSearched] = useState(false);
+
+  const fetchClasses = useCallback(async () => {
+    setIsLoading(true);
+    setHasSearched(true);
+
+    try {
+      const params = new URLSearchParams();
+
+      if (discipline) {
+        params.set("discipline", discipline);
+      }
+
+      if (duration) {
+        params.set("duration", duration);
+      }
+
+      if (searchQuery) {
+        params.set("q", searchQuery);
+      }
+
+      const response = await fetch(`/api/peloton/search?${params.toString()}`);
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch classes");
+      }
+
+      const data = await response.json();
+
+      // Client-side filter for muscle groups (API doesn't support this directly)
+      let classes = data.classes || [];
+      if (selectedMuscles.length > 0) {
+        // Filter by title containing muscle group keywords
+        classes = classes.filter((c: ClassResult) => {
+          const titleLower = c.title.toLowerCase();
+          return selectedMuscles.some((muscle) => {
+            const muscleGroup = MUSCLE_GROUPS.find((m) => m.id === muscle);
+            if (!muscleGroup) return false;
+            return titleLower.includes(muscleGroup.label.toLowerCase());
+          });
+        });
+      }
+
+      setResults(classes);
+      setTotalResults(data.total || classes.length);
+    } catch (error) {
+      console.error("Search error:", error);
+      setResults([]);
+      setTotalResults(0);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [discipline, duration, searchQuery, selectedMuscles]);
+
+  // Load initial results when Peloton is connected
+  useEffect(() => {
+    if (isPelotonConnected && !hasSearched) {
+      fetchClasses();
+    }
+  }, [isPelotonConnected, hasSearched, fetchClasses]);
 
   const handleSearch = async () => {
-    setIsLoading(true);
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 500));
-
-    // Filter mock data based on criteria
-    let filtered = [...MOCK_CLASSES];
-
-    if (searchQuery) {
-      filtered = filtered.filter(
-        (c) =>
-          c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          c.instructor_name.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-    }
-
-    if (discipline) {
-      filtered = filtered.filter((c) => c.fitness_discipline === discipline);
-    }
-
-    if (duration) {
-      const durationSeconds = parseInt(duration) * 60;
-      filtered = filtered.filter((c) => c.duration === durationSeconds);
-    }
-
-    if (selectedMuscles.length > 0) {
-      filtered = filtered.filter(
-        (c) => c.muscle_group && selectedMuscles.includes(c.muscle_group)
-      );
-    }
-
-    setResults(filtered);
-    setIsLoading(false);
+    await fetchClasses();
   };
 
   const handleMuscleToggle = (muscleId: string) => {
@@ -189,7 +150,7 @@ export default function SearchPage() {
     setDiscipline("");
     setDuration("");
     setSelectedMuscles([]);
-    setResults(MOCK_CLASSES);
+    setHasSearched(false);
   };
 
   const hasActiveFilters =
@@ -365,7 +326,9 @@ export default function SearchPage() {
       {/* Results */}
       <div>
         <p className="text-sm text-muted-foreground mb-4">
-          {results.length} classes found
+          {hasSearched
+            ? `${results.length}${totalResults > results.length ? ` of ${totalResults}` : ""} classes found`
+            : "Search for classes above"}
         </p>
 
         {isLoading ? (
@@ -413,17 +376,26 @@ function ClassCard({
 
   return (
     <Card className="group overflow-hidden transition-all hover:border-primary/30">
-      {/* Image placeholder */}
+      {/* Class Image */}
       <div className="relative h-40 bg-gradient-to-br from-primary/20 to-primary/5">
-        <div className="absolute inset-0 flex items-center justify-center">
-          <Dumbbell className="h-12 w-12 text-primary/30" />
-        </div>
+        {classItem.image_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={classItem.image_url}
+            alt={classItem.title}
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <Dumbbell className="h-12 w-12 text-primary/30" />
+          </div>
+        )}
         <Badge className="absolute top-3 left-3 bg-black/60 text-white">
           {durationMinutes} min
         </Badge>
-        {classItem.muscle_group && (
+        {classItem.fitness_discipline_display_name && (
           <Badge className="absolute top-3 right-3 bg-primary/80 text-white">
-            {MUSCLE_GROUPS.find((m) => m.id === classItem.muscle_group)?.label}
+            {classItem.fitness_discipline_display_name}
           </Badge>
         )}
       </div>
