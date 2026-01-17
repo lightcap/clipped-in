@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Search,
   User,
@@ -9,6 +9,8 @@ import {
   ChevronDown,
   Dumbbell,
   X,
+  AlertCircle,
+  Check,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -37,11 +39,11 @@ interface ClassResult {
   title: string;
   description: string;
   duration: number;
-  difficulty_estimate: number;
+  difficulty_estimate: number | null;
   image_url: string;
   instructor_name: string;
   fitness_discipline: string;
-  muscle_group?: string;
+  fitness_discipline_display_name?: string;
 }
 
 const DURATIONS = [
@@ -63,75 +65,6 @@ const DISCIPLINES = [
   { value: "cardio", label: "Cardio" },
 ];
 
-// Mock class data for demonstration
-const MOCK_CLASSES: ClassResult[] = [
-  {
-    id: "1",
-    title: "20 min Arms & Shoulders",
-    description: "Focus on biceps, triceps, and shoulders with this targeted upper body workout.",
-    duration: 1200,
-    difficulty_estimate: 7.2,
-    image_url: "/api/placeholder/400/225",
-    instructor_name: "Adrian Williams",
-    fitness_discipline: "strength",
-    muscle_group: "arms",
-  },
-  {
-    id: "2",
-    title: "30 min Full Body Strength",
-    description: "Complete full body workout hitting all major muscle groups.",
-    duration: 1800,
-    difficulty_estimate: 7.8,
-    image_url: "/api/placeholder/400/225",
-    instructor_name: "Rad Lopez",
-    fitness_discipline: "strength",
-    muscle_group: "full_body",
-  },
-  {
-    id: "3",
-    title: "20 min Glutes & Legs",
-    description: "Lower body focused workout targeting glutes, quads, and hamstrings.",
-    duration: 1200,
-    difficulty_estimate: 8.1,
-    image_url: "/api/placeholder/400/225",
-    instructor_name: "Robin Arzon",
-    fitness_discipline: "strength",
-    muscle_group: "legs",
-  },
-  {
-    id: "4",
-    title: "15 min Core Strength",
-    description: "Intense core workout focusing on abs and obliques.",
-    duration: 900,
-    difficulty_estimate: 7.5,
-    image_url: "/api/placeholder/400/225",
-    instructor_name: "Olivia Amato",
-    fitness_discipline: "strength",
-    muscle_group: "core",
-  },
-  {
-    id: "5",
-    title: "45 min Power Zone Endurance",
-    description: "Build endurance with this zone 2-3 focused ride.",
-    duration: 2700,
-    difficulty_estimate: 6.8,
-    image_url: "/api/placeholder/400/225",
-    instructor_name: "Matt Wilpers",
-    fitness_discipline: "cycling",
-  },
-  {
-    id: "6",
-    title: "20 min Back & Biceps",
-    description: "Target your back and biceps with this focused upper body session.",
-    duration: 1200,
-    difficulty_estimate: 7.0,
-    image_url: "/api/placeholder/400/225",
-    instructor_name: "Jess Sims",
-    fitness_discipline: "strength",
-    muscle_group: "back",
-  },
-];
-
 export default function SearchPage() {
   const { isPelotonConnected } = useAuthStore();
   const [searchQuery, setSearchQuery] = useState("");
@@ -139,41 +72,109 @@ export default function SearchPage() {
   const [duration, setDuration] = useState<string>("");
   const [selectedMuscles, setSelectedMuscles] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [results, setResults] = useState<ClassResult[]>(MOCK_CLASSES);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [results, setResults] = useState<ClassResult[]>([]);
+  const [totalResults, setTotalResults] = useState(0);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [pageCount, setPageCount] = useState(0);
+  const [hasSearched, setHasSearched] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notification, setNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  const fetchClasses = useCallback(async (page = 0, append = false) => {
+    if (append) {
+      setIsLoadingMore(true);
+    } else {
+      setIsLoading(true);
+      setCurrentPage(0);
+    }
+    setHasSearched(true);
+    setError(null);
+
+    try {
+      const params = new URLSearchParams();
+
+      if (discipline) {
+        params.set("discipline", discipline);
+      }
+
+      if (duration) {
+        params.set("duration", duration);
+      }
+
+      if (searchQuery) {
+        params.set("q", searchQuery);
+      }
+
+      params.set("page", page.toString());
+
+      const response = await fetch(`/api/peloton/search?${params.toString()}`);
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        if (response.status === 401 && data.tokenExpired) {
+          setError("Your Peloton session has expired. Please reconnect your account.");
+          setResults([]);
+          setTotalResults(0);
+          return;
+        }
+        throw new Error(data.error || `Search failed (${response.status})`);
+      }
+
+      const data = await response.json();
+
+      // Client-side filter for muscle groups (API doesn't support this directly)
+      let classes = data.classes || [];
+      if (selectedMuscles.length > 0) {
+        // Filter by title containing muscle group keywords
+        classes = classes.filter((c: ClassResult) => {
+          const titleLower = c.title.toLowerCase();
+          return selectedMuscles.some((muscle) => {
+            const muscleGroup = MUSCLE_GROUPS.find((m) => m.id === muscle);
+            if (!muscleGroup) return false;
+            return titleLower.includes(muscleGroup.label.toLowerCase());
+          });
+        });
+      }
+
+      if (append) {
+        setResults((prev) => [...prev, ...classes]);
+      } else {
+        setResults(classes);
+      }
+      setCurrentPage(data.page ?? page);
+      setPageCount(data.page_count ?? 1);
+      setTotalResults(data.total || classes.length);
+    } catch (error) {
+      console.error("Search error:", error);
+      setError(error instanceof Error ? error.message : "Failed to search classes. Please try again.");
+      if (!append) {
+        setResults([]);
+        setTotalResults(0);
+      }
+    } finally {
+      setIsLoading(false);
+      setIsLoadingMore(false);
+    }
+  }, [discipline, duration, searchQuery, selectedMuscles]);
+
+  const loadMore = useCallback(() => {
+    if (currentPage < pageCount - 1 && !isLoadingMore) {
+      fetchClasses(currentPage + 1, true);
+    }
+  }, [currentPage, pageCount, isLoadingMore, fetchClasses]);
+
+  const hasMore = currentPage < pageCount - 1;
+
+  // Load initial results when Peloton is connected
+  useEffect(() => {
+    if (isPelotonConnected && !hasSearched) {
+      fetchClasses();
+    }
+  }, [isPelotonConnected, hasSearched, fetchClasses]);
 
   const handleSearch = async () => {
-    setIsLoading(true);
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 500));
-
-    // Filter mock data based on criteria
-    let filtered = [...MOCK_CLASSES];
-
-    if (searchQuery) {
-      filtered = filtered.filter(
-        (c) =>
-          c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          c.instructor_name.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-    }
-
-    if (discipline) {
-      filtered = filtered.filter((c) => c.fitness_discipline === discipline);
-    }
-
-    if (duration) {
-      const durationSeconds = parseInt(duration) * 60;
-      filtered = filtered.filter((c) => c.duration === durationSeconds);
-    }
-
-    if (selectedMuscles.length > 0) {
-      filtered = filtered.filter(
-        (c) => c.muscle_group && selectedMuscles.includes(c.muscle_group)
-      );
-    }
-
-    setResults(filtered);
-    setIsLoading(false);
+    await fetchClasses();
   };
 
   const handleMuscleToggle = (muscleId: string) => {
@@ -189,7 +190,7 @@ export default function SearchPage() {
     setDiscipline("");
     setDuration("");
     setSelectedMuscles([]);
-    setResults(MOCK_CLASSES);
+    setHasSearched(false);
   };
 
   const hasActiveFilters =
@@ -197,7 +198,7 @@ export default function SearchPage() {
 
   const handleAddToPlan = async (classItem: ClassResult, date: string) => {
     try {
-      await fetch("/api/planner/workouts", {
+      const response = await fetch("/api/planner/workouts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -210,9 +211,21 @@ export default function SearchPage() {
           scheduled_date: date,
         }),
       });
-      // Show success toast or feedback
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to add workout to plan");
+      }
+
+      setNotification({ type: "success", message: `Added "${classItem.title}" to your plan` });
+      setTimeout(() => setNotification(null), 3000);
     } catch (error) {
       console.error("Failed to add to plan:", error);
+      setNotification({
+        type: "error",
+        message: error instanceof Error ? error.message : "Failed to add workout to plan",
+      });
+      setTimeout(() => setNotification(null), 5000);
     }
   };
 
@@ -246,6 +259,50 @@ export default function SearchPage() {
           Find classes by muscle group, duration, instructor, and more
         </p>
       </div>
+
+      {/* Notification Toast */}
+      {notification && (
+        <Card className={`${notification.type === "success" ? "border-green-500/30 bg-green-500/5" : "border-red-500/30 bg-red-500/5"}`}>
+          <CardContent className="flex items-center gap-4 py-3">
+            {notification.type === "success" ? (
+              <Check className="h-5 w-5 text-green-500 shrink-0" />
+            ) : (
+              <AlertCircle className="h-5 w-5 text-red-500 shrink-0" />
+            )}
+            <p className={notification.type === "success" ? "text-green-500" : "text-red-500"}>
+              {notification.message}
+            </p>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-auto"
+              onClick={() => setNotification(null)}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Error Banner */}
+      {error && (
+        <Card className="border-red-500/30 bg-red-500/5">
+          <CardContent className="flex items-center gap-4 py-4">
+            <AlertCircle className="h-5 w-5 text-red-500 shrink-0" />
+            <div className="flex-1">
+              <p className="font-medium text-red-500">Search Error</p>
+              <p className="text-sm text-muted-foreground">{error}</p>
+            </div>
+            <Button
+              variant="outline"
+              className="border-red-500/50 text-red-500 hover:bg-red-500/10"
+              onClick={() => { setError(null); fetchClasses(); }}
+            >
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Search and Filters */}
       <div className="space-y-4">
@@ -365,7 +422,9 @@ export default function SearchPage() {
       {/* Results */}
       <div>
         <p className="text-sm text-muted-foreground mb-4">
-          {results.length} classes found
+          {hasSearched
+            ? `${results.length}${totalResults > results.length ? ` of ${totalResults}` : ""} classes found`
+            : "Search for classes above"}
         </p>
 
         {isLoading ? (
@@ -375,15 +434,37 @@ export default function SearchPage() {
             ))}
           </div>
         ) : results.length > 0 ? (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 stagger-fade-in">
-            {results.map((classItem) => (
-              <ClassCard
-                key={classItem.id}
-                classItem={classItem}
-                onAddToPlan={handleAddToPlan}
-              />
-            ))}
-          </div>
+          <>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 stagger-fade-in">
+              {results.map((classItem) => (
+                <ClassCard
+                  key={classItem.id}
+                  classItem={classItem}
+                  onAddToPlan={handleAddToPlan}
+                />
+              ))}
+            </div>
+            {hasMore && (
+              <div className="flex justify-center mt-8">
+                <Button
+                  variant="outline"
+                  size="lg"
+                  onClick={loadMore}
+                  disabled={isLoadingMore}
+                  className="gap-2"
+                >
+                  {isLoadingMore ? (
+                    <>
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                      Loading...
+                    </>
+                  ) : (
+                    <>Load More Classes</>
+                  )}
+                </Button>
+              </div>
+            )}
+          </>
         ) : (
           <Card className="py-16">
             <CardContent className="flex flex-col items-center justify-center">
@@ -409,21 +490,30 @@ function ClassCard({
   onAddToPlan: (classItem: ClassResult, date: string) => void;
 }) {
   const durationMinutes = Math.round(classItem.duration / 60);
-  const difficulty = classItem.difficulty_estimate.toFixed(1);
+  const difficulty = classItem.difficulty_estimate?.toFixed(1) ?? "N/A";
 
   return (
     <Card className="group overflow-hidden transition-all hover:border-primary/30">
-      {/* Image placeholder */}
+      {/* Class Image */}
       <div className="relative h-40 bg-gradient-to-br from-primary/20 to-primary/5">
-        <div className="absolute inset-0 flex items-center justify-center">
-          <Dumbbell className="h-12 w-12 text-primary/30" />
-        </div>
+        {classItem.image_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={classItem.image_url}
+            alt={classItem.title}
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <Dumbbell className="h-12 w-12 text-primary/30" />
+          </div>
+        )}
         <Badge className="absolute top-3 left-3 bg-black/60 text-white">
           {durationMinutes} min
         </Badge>
-        {classItem.muscle_group && (
+        {classItem.fitness_discipline_display_name && (
           <Badge className="absolute top-3 right-3 bg-primary/80 text-white">
-            {MUSCLE_GROUPS.find((m) => m.id === classItem.muscle_group)?.label}
+            {classItem.fitness_discipline_display_name}
           </Badge>
         )}
       </div>
