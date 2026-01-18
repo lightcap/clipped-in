@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import Image from "next/image";
 import {
   DndContext,
   DragEndEvent,
@@ -760,10 +761,12 @@ function WorkoutCardWithHandle({
         {/* Background cover image */}
         {workout.ride_image_url && (
           <div className="absolute inset-0">
-            <img
+            <Image
               src={workout.ride_image_url}
               alt=""
-              className="w-full h-full object-cover object-[center_15%] opacity-40"
+              fill
+              className="object-cover object-[center_15%] opacity-40"
+              sizes="(max-width: 768px) 100vw, 50vw"
             />
             <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/75 to-background/60" />
           </div>
@@ -868,10 +871,12 @@ function WorkoutCardWithHandle({
           {/* Class Image */}
           {workout.ride_image_url && (
             <div className="relative h-48 w-full">
-              <img
+              <Image
                 src={workout.ride_image_url}
                 alt={workout.ride_title}
-                className="w-full h-full object-cover"
+                fill
+                className="object-cover"
+                sizes="(max-width: 768px) 100vw, 448px"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-background via-background/20 to-transparent" />
             </div>

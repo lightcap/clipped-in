@@ -33,13 +33,11 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuthStore } from "@/lib/stores/auth-store";
 import { createClient } from "@/lib/supabase/client";
-import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 export default function SettingsPage() {
   const { profile, isPelotonConnected, pelotonTokenStatus, isLoading, setIsPelotonConnected, setProfile, setPelotonTokenStatus } = useAuthStore();
   const { theme, setTheme } = useTheme();
-  const router = useRouter();
   const [isSaving, setIsSaving] = useState(false);
   const [displayName, setDisplayName] = useState(profile?.display_name || "");
   const [stackPushTime, setStackPushTime] = useState("00:00");
