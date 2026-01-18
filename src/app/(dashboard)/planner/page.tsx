@@ -67,6 +67,7 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import { toast } from "sonner";
 import { useAuthStore } from "@/lib/stores/auth-store";
+import { useUndo } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 
 interface PlannedWorkout {
@@ -100,6 +101,7 @@ const MAX_DAYS = 14;
 
 export default function PlannerPage() {
   const { isPelotonConnected, pelotonTokenStatus } = useAuthStore();
+  const { executeWithUndo } = useUndo({ toastDuration: 5000 });
   const [startDate, setStartDate] = useState(() => startOfDay(new Date()));
   const [numberOfDays, setNumberOfDays] = useState(MIN_DAYS);
   const [workouts, setWorkouts] = useState<PlannedWorkout[]>([]);
@@ -154,54 +156,146 @@ export default function PlannerPage() {
       .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
 
   const handleDeleteWorkout = async (workoutId: string) => {
-    // Optimistic update - remove immediately
-    const previousWorkouts = workouts;
-    setWorkouts((prev) => prev.filter((w) => w.id !== workoutId));
+    // Find the workout being deleted (for undo data)
+    const deletedWorkout = workouts.find((w) => w.id === workoutId);
+    if (!deletedWorkout) return;
 
-    try {
-      const response = await fetch(`/api/planner/workouts/${workoutId}`, {
-        method: "DELETE",
-      });
-      if (!response.ok) {
-        // Revert on failure
-        setWorkouts(previousWorkouts);
-        toast.error("Failed to remove workout. Please try again.");
-      }
-    } catch (error) {
-      console.error("Failed to delete workout:", error);
-      // Revert on error
-      setWorkouts(previousWorkouts);
-      toast.error("Failed to remove workout. Please check your connection.");
-    }
+    // Store previous state for potential rollback
+    const previousWorkouts = workouts;
+
+    await executeWithUndo({
+      type: "delete_workout",
+      data: deletedWorkout,
+      message: "Workout removed",
+      execute: async () => {
+        // Optimistic update - remove immediately
+        setWorkouts((prev) => prev.filter((w) => w.id !== workoutId));
+
+        try {
+          const response = await fetch(`/api/planner/workouts/${workoutId}`, {
+            method: "DELETE",
+          });
+          if (!response.ok) {
+            // Revert on failure
+            setWorkouts(previousWorkouts);
+            toast.error("Failed to remove workout. Please try again.");
+          }
+        } catch (error) {
+          console.error("Failed to delete workout:", error);
+          // Revert on error
+          setWorkouts(previousWorkouts);
+          toast.error("Failed to remove workout. Please check your connection.");
+        }
+      },
+      undo: async () => {
+        // Re-add the workout via API
+        try {
+          const response = await fetch("/api/planner/workouts", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              peloton_ride_id: deletedWorkout.peloton_ride_id,
+              ride_title: deletedWorkout.ride_title,
+              ride_image_url: deletedWorkout.ride_image_url,
+              instructor_name: deletedWorkout.instructor_name,
+              duration_seconds: deletedWorkout.duration_seconds,
+              discipline: deletedWorkout.discipline,
+              scheduled_date: deletedWorkout.scheduled_date,
+              scheduled_time: deletedWorkout.scheduled_time,
+              status: deletedWorkout.status,
+            }),
+          });
+          if (response.ok) {
+            // Refresh workouts to get the new ID
+            fetchWorkouts();
+          } else {
+            toast.error("Failed to restore workout");
+          }
+        } catch (error) {
+          console.error("Failed to restore workout:", error);
+          toast.error("Failed to restore workout. Please check your connection.");
+        }
+      },
+    });
   };
 
   const handleStatusChange = async (
     workoutId: string,
     status: PlannedWorkout["status"]
   ) => {
-    // Optimistic update - change status immediately
-    const previousWorkouts = workouts;
-    setWorkouts((prev) =>
-      prev.map((w) => (w.id === workoutId ? { ...w, status } : w))
-    );
+    // Find the workout and its previous status
+    const workout = workouts.find((w) => w.id === workoutId);
+    if (!workout) return;
 
-    try {
-      const response = await fetch(`/api/planner/workouts/${workoutId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
-      });
-      if (!response.ok) {
-        // Revert on failure
-        setWorkouts(previousWorkouts);
-        toast.error("Failed to update workout status. Please try again.");
-      }
-    } catch (error) {
-      console.error("Failed to update workout:", error);
-      // Revert on error
-      setWorkouts(previousWorkouts);
-      toast.error("Failed to update workout. Please check your connection.");
-    }
+    const previousStatus = workout.status;
+    const previousWorkouts = workouts;
+
+    // Create descriptive message based on status change
+    const statusLabels: Record<PlannedWorkout["status"], string> = {
+      planned: "marked as planned",
+      completed: "marked as complete",
+      skipped: "marked as skipped",
+      postponed: "marked as postponed",
+    };
+    const message = `Workout ${statusLabels[status]}`;
+
+    await executeWithUndo({
+      type: "status_change",
+      data: { workoutId, previousStatus, newStatus: status },
+      message,
+      execute: async () => {
+        // Optimistic update - change status immediately
+        setWorkouts((prev) =>
+          prev.map((w) => (w.id === workoutId ? { ...w, status } : w))
+        );
+
+        try {
+          const response = await fetch(`/api/planner/workouts/${workoutId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status }),
+          });
+          if (!response.ok) {
+            // Revert on failure
+            setWorkouts(previousWorkouts);
+            toast.error("Failed to update workout status. Please try again.");
+          }
+        } catch (error) {
+          console.error("Failed to update workout:", error);
+          // Revert on error
+          setWorkouts(previousWorkouts);
+          toast.error("Failed to update workout. Please check your connection.");
+        }
+      },
+      undo: async () => {
+        // Revert to previous status
+        setWorkouts((prev) =>
+          prev.map((w) => (w.id === workoutId ? { ...w, status: previousStatus } : w))
+        );
+
+        try {
+          const response = await fetch(`/api/planner/workouts/${workoutId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: previousStatus }),
+          });
+          if (!response.ok) {
+            toast.error("Failed to undo status change");
+            // Revert the undo
+            setWorkouts((prev) =>
+              prev.map((w) => (w.id === workoutId ? { ...w, status } : w))
+            );
+          }
+        } catch (error) {
+          console.error("Failed to undo status change:", error);
+          toast.error("Failed to undo status change. Please check your connection.");
+          // Revert the undo
+          setWorkouts((prev) =>
+            prev.map((w) => (w.id === workoutId ? { ...w, status } : w))
+          );
+        }
+      },
+    });
   };
 
   const handleDragStart = (event: DragStartEvent) => {
@@ -233,8 +327,11 @@ export default function PlannerPage() {
 
     const reorderedDayWorkouts = arrayMove(dayWorkouts, oldIndex, newIndex);
 
-    // Optimistic update
+    // Store the original order for undo
     const previousWorkouts = workouts;
+    const previousOrder = dayWorkouts.map((w) => w.id);
+
+    // Calculate updated workouts
     const updatedWorkouts = workouts.map((w) => {
       const reorderedIndex = reorderedDayWorkouts.findIndex((rw) => rw.id === w.id);
       if (reorderedIndex !== -1) {
@@ -242,27 +339,61 @@ export default function PlannerPage() {
       }
       return w;
     });
-    setWorkouts(updatedWorkouts);
 
-    // Persist to server
-    try {
-      const response = await fetch("/api/planner/workouts/reorder", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          date: activeWorkout.scheduled_date,
-          workoutIds: reorderedDayWorkouts.map((w) => w.id),
-        }),
-      });
-      if (!response.ok) {
+    await executeWithUndo({
+      type: "reorder_workouts",
+      data: { date: activeWorkout.scheduled_date, previousOrder, newOrder: reorderedDayWorkouts.map((w) => w.id) },
+      message: "Workouts reordered",
+      execute: async () => {
+        // Optimistic update
+        setWorkouts(updatedWorkouts);
+
+        // Persist to server
+        try {
+          const response = await fetch("/api/planner/workouts/reorder", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              date: activeWorkout.scheduled_date,
+              workoutIds: reorderedDayWorkouts.map((w) => w.id),
+            }),
+          });
+          if (!response.ok) {
+            setWorkouts(previousWorkouts);
+            toast.error("Failed to save workout order. Please try again.");
+          }
+        } catch (error) {
+          console.error("Failed to reorder workouts:", error);
+          setWorkouts(previousWorkouts);
+          toast.error("Failed to save workout order. Please check your connection.");
+        }
+      },
+      undo: async () => {
+        // Revert to previous order
         setWorkouts(previousWorkouts);
-        toast.error("Failed to save workout order. Please try again.");
-      }
-    } catch (error) {
-      console.error("Failed to reorder workouts:", error);
-      setWorkouts(previousWorkouts);
-      toast.error("Failed to save workout order. Please check your connection.");
-    }
+
+        try {
+          const response = await fetch("/api/planner/workouts/reorder", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              date: activeWorkout.scheduled_date,
+              workoutIds: previousOrder,
+            }),
+          });
+          if (!response.ok) {
+            toast.error("Failed to undo reorder");
+            // Revert the undo
+            setWorkouts(updatedWorkouts);
+          }
+        } catch (error) {
+          console.error("Failed to undo reorder:", error);
+          toast.error("Failed to undo reorder. Please check your connection.");
+          // Revert the undo
+          setWorkouts(updatedWorkouts);
+        }
+      },
+    });
   };
 
   const handlePushToStack = async () => {
