@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -25,31 +25,10 @@ export function ConnectPeloton({ onConnect }: ConnectPelotonProps) {
   const { isPelotonConnected, setIsPelotonConnected, setProfile } = useAuthStore();
   const [isOpen, setIsOpen] = useState(false);
   const [step, setStep] = useState<"intro" | "instructions" | "waiting" | "success">("intro");
-  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [manualToken, setManualToken] = useState("");
 
-  // Check for token in URL hash (from callback redirect)
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const checkForToken = async () => {
-      const hash = window.location.hash;
-      if (hash.includes("peloton_token=")) {
-        const token = decodeURIComponent(hash.split("peloton_token=")[1]);
-        window.location.hash = ""; // Clear the hash
-
-        if (token) {
-          await handleTokenReceived(token);
-        }
-      }
-    };
-
-    checkForToken();
-  }, []);
-
-  const handleTokenReceived = async (token: string) => {
-    setIsLoading(true);
+  const handleTokenReceived = useCallback(async (token: string) => {
     setError(null);
     setStep("waiting");
     setIsOpen(true);
@@ -79,10 +58,27 @@ export function ConnectPeloton({ onConnect }: ConnectPelotonProps) {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to connect");
       setStep("instructions");
-    } finally {
-      setIsLoading(false);
     }
-  };
+  }, [setIsPelotonConnected, setProfile, onConnect]);
+
+  // Check for token in URL hash (from callback redirect)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const checkForToken = async () => {
+      const hash = window.location.hash;
+      if (hash.includes("peloton_token=")) {
+        const token = decodeURIComponent(hash.split("peloton_token=")[1]);
+        window.location.hash = ""; // Clear the hash
+
+        if (token) {
+          await handleTokenReceived(token);
+        }
+      }
+    };
+
+    checkForToken();
+  }, [handleTokenReceived]);
 
   const openPeloton = () => {
     window.open("https://members.onepeloton.com", "_blank");
