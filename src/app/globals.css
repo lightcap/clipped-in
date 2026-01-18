@@ -33,6 +33,12 @@
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
 
+    /* Completion state colors - muted palette */
+    --complete: 163 35% 35%;
+    --complete-foreground: 0 0% 100%;
+    --partial: 36 40% 50%;
+    --partial-foreground: 0 0% 100%;
+
     /* Custom properties for premium effects */
     --sidebar-width: 280px;
     --header-height: 72px;
@@ -64,6 +70,12 @@
     --chart-3: 220 70% 60%;
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
+
+    /* Completion state colors - muted palette */
+    --complete: 163 35% 45%;
+    --complete-foreground: 0 0% 100%;
+    --partial: 36 40% 55%;
+    --partial-foreground: 0 0% 100%;
   }
 }
 
