@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback } from "react";
 import {
   TrendingUp,
   Flame,
-  Target,
   Calendar,
   ArrowUpRight,
   ArrowDownRight,
@@ -40,7 +39,6 @@ export default function DashboardPage() {
   const { profile, isPelotonConnected, pelotonTokenStatus } = useAuthStore();
 
   const currentFtp = profile?.current_ftp || 0;
-  const estimatedFtp = profile?.estimated_ftp || 0;
 
   const isExpired = pelotonTokenStatus === "expired";
 
@@ -198,7 +196,7 @@ export default function DashboardPage() {
       )}
 
       {/* Stats Grid */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 stagger-fade-in">
+      <div className="grid gap-6 md:grid-cols-3 stagger-fade-in">
         {/* Current FTP */}
         <Card className="metric-card">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -233,27 +231,6 @@ export default function DashboardPage() {
                 </div>
               );
             })()}
-          </CardContent>
-        </Card>
-
-        {/* Estimated FTP */}
-        <Card className="metric-card">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Estimated FTP
-            </CardTitle>
-            <Target className="h-4 w-4 text-blue-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-baseline gap-2">
-              <span className="font-display text-4xl tracking-tight text-foreground">
-                {estimatedFtp || "—"}
-              </span>
-              <span className="text-sm text-muted-foreground">watts</span>
-            </div>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Based on recent rides
-            </p>
           </CardContent>
         </Card>
 

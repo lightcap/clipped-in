@@ -13,7 +13,7 @@ vi.mock("next/navigation", () => ({
 
 // Mock the auth store
 const mockAuthStore = {
-  profile: null as { display_name?: string; current_ftp?: number; estimated_ftp?: number } | null,
+  profile: null as { display_name?: string; current_ftp?: number } | null,
   isPelotonConnected: false,
   pelotonTokenStatus: "unknown" as string,
 };
@@ -64,7 +64,6 @@ describe("DashboardPage", () => {
       mockAuthStore.profile = {
         display_name: "Test User",
         current_ftp: 200,
-        estimated_ftp: 210,
       };
     });
 
@@ -82,13 +81,6 @@ describe("DashboardPage", () => {
 
       expect(screen.getByText("200")).toBeInTheDocument();
       expect(screen.getByText("Current FTP")).toBeInTheDocument();
-    });
-
-    it("should display estimated FTP from profile", () => {
-      render(<DashboardPage />);
-
-      expect(screen.getByText("210")).toBeInTheDocument();
-      expect(screen.getByText("Estimated FTP")).toBeInTheDocument();
     });
 
     it("should show loading skeletons initially", async () => {
