@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import Image from "next/image";
+import { useRouter } from "next/navigation";
 import {
   TrendingUp,
   Flame,
@@ -10,23 +12,45 @@ import {
   ArrowDownRight,
   Zap,
   AlertCircle,
+  Clock,
+  User,
+  MoreVertical,
+  CalendarDays,
+  Maximize2,
 } from "lucide-react";
 import { format, addDays, startOfWeek as getStartOfWeek, endOfWeek as getEndOfWeek } from "date-fns";
 import { useAuthStore } from "@/lib/stores/auth-store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
 import { ConnectPeloton } from "@/components/peloton/connect-peloton";
-import { getDisciplineLabel } from "@/types/peloton";
+import { getDisciplineLabel, getDisciplineColor } from "@/types/peloton";
+import { cn } from "@/lib/utils";
 
 interface PlannedWorkout {
   id: string;
   ride_title: string;
-  instructor_name: string;
-  scheduled_date: string;
-  scheduled_time?: string;
+  ride_image_url: string | null;
+  instructor_name: string | null;
+  duration_seconds: number;
   discipline: string;
+  scheduled_date: string;
+  scheduled_time: string | null;
+  status: "planned" | "completed" | "skipped" | "postponed";
 }
 
 interface FtpRecord {
@@ -37,6 +61,7 @@ interface FtpRecord {
 }
 
 export default function DashboardPage() {
+  const router = useRouter();
   const { profile, isPelotonConnected, pelotonTokenStatus } = useAuthStore();
 
   const currentFtp = profile?.current_ftp || 0;
@@ -49,6 +74,7 @@ export default function DashboardPage() {
   const [weeklyWorkoutCount, setWeeklyWorkoutCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [dashboardError, setDashboardError] = useState<string | null>(null);
+  const [selectedWorkout, setSelectedWorkout] = useState<PlannedWorkout | null>(null);
 
   const fetchDashboardData = useCallback(async () => {
     if (!isPelotonConnected) return;
@@ -324,27 +350,118 @@ export default function DashboardPage() {
               </div>
             ) : upcomingWorkouts.length > 0 ? (
               <div className="space-y-4">
-                {upcomingWorkouts.map((workout) => (
-                  <div
-                    key={workout.id}
-                    className="flex items-center justify-between rounded-lg border border-border/50 bg-secondary/30 p-4 transition-colors hover:bg-secondary/50"
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
-                        <Zap className="h-6 w-6 text-primary" />
+                {(() => {
+                  // Group workouts by date
+                  const groupedByDate = upcomingWorkouts.reduce((acc, workout) => {
+                    const date = workout.scheduled_date;
+                    if (!acc[date]) acc[date] = [];
+                    acc[date].push(workout);
+                    return acc;
+                  }, {} as Record<string, PlannedWorkout[]>);
+
+                  return Object.entries(groupedByDate).map(([date, workouts]) => (
+                    <div key={date}>
+                      {/* Date divider */}
+                      <div className="flex items-center gap-3 mb-2">
+                        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                          {formatDateDivider(date)}
+                        </span>
+                        <div className="flex-1 h-px bg-border/50" />
                       </div>
-                      <div>
-                        <h4 className="font-medium text-foreground">
-                          {workout.ride_title}
-                        </h4>
-                        <p className="text-sm text-muted-foreground">
-                          {workout.instructor_name} • {formatWorkoutDate(workout.scheduled_date, workout.scheduled_time)}
-                        </p>
+
+                      {/* Workouts for this date */}
+                      <div className="space-y-2">
+                        {workouts.map((workout) => {
+                          const disciplineLabel = getDisciplineLabel(workout.discipline);
+                          const disciplineColor = getDisciplineColor(workout.discipline);
+
+                          return (
+                            <div
+                              key={workout.id}
+                              className="relative overflow-hidden rounded-xl border border-border/40 bg-secondary/40 transition-all duration-200 hover:border-border/60"
+                            >
+                              {/* Background cover image */}
+                              {workout.ride_image_url && (
+                                <div className="absolute inset-0">
+                                  <Image
+                                    src={workout.ride_image_url}
+                                    alt=""
+                                    fill
+                                    className="object-cover object-[center_15%] opacity-40"
+                                    sizes="(max-width: 768px) 100vw, 66vw"
+                                  />
+                                  <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/75 to-background/60" />
+                                </div>
+                              )}
+
+                              <div className="relative p-3">
+                                {/* Top row: Discipline on left, Duration on right */}
+                                <div className="flex items-center justify-between mb-1.5">
+                                  <div className="flex items-center gap-2">
+                                    <div className={cn("h-2 w-2 rounded-full shrink-0", disciplineColor)} />
+                                    <span className="text-xs font-medium text-muted-foreground">
+                                      {disciplineLabel}
+                                    </span>
+                                  </div>
+                                  <span className="text-xs text-muted-foreground/70 flex items-center gap-1">
+                                    <Clock className="h-3 w-3" />
+                                    {Math.round(workout.duration_seconds / 60)} min
+                                  </span>
+                                </div>
+
+                                {/* Title */}
+                                <p className="font-medium text-sm leading-snug line-clamp-2 text-foreground">
+                                  {workout.ride_title}
+                                </p>
+
+                                {/* Bottom row: Instructor + Time + Menu */}
+                                <div className="flex items-center justify-between mt-2">
+                                  <div className="flex items-center gap-3">
+                                    <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                      <User className="h-3 w-3" />
+                                      <span className="truncate max-w-[150px]">
+                                        {workout.instructor_name || "TBD"}
+                                      </span>
+                                    </p>
+                                    {workout.scheduled_time && (
+                                      <span className="text-xs text-muted-foreground/70">
+                                        {formatTime(workout.scheduled_time)}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <button
+                                        className="p-1 rounded-md hover:bg-white/10 transition-colors"
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                                      </button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                      <DropdownMenuItem
+                                        onClick={() => setSelectedWorkout(workout)}
+                                      >
+                                        <Maximize2 className="mr-2 h-4 w-4" />
+                                        View details
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem
+                                        onClick={() => router.push(`/planner?date=${workout.scheduled_date}`)}
+                                      >
+                                        <CalendarDays className="mr-2 h-4 w-4" />
+                                        See it in your plan
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
-                    <Badge variant="secondary">{getDisciplineLabel(workout.discipline)}</Badge>
-                  </div>
-                ))}
+                  ));
+                })()}
               </div>
             ) : (
               <p className="text-muted-foreground text-center py-8">
@@ -353,6 +470,69 @@ export default function DashboardPage() {
             )}
           </CardContent>
         </Card>
+
+        {/* Workout Details Dialog */}
+        <Dialog open={!!selectedWorkout} onOpenChange={(open) => !open && setSelectedWorkout(null)}>
+          <DialogContent className="sm:max-w-md overflow-hidden p-0">
+            {selectedWorkout && (
+              <>
+                {/* Class Image */}
+                {selectedWorkout.ride_image_url && (
+                  <div className="relative h-48 w-full">
+                    <Image
+                      src={selectedWorkout.ride_image_url}
+                      alt={selectedWorkout.ride_title}
+                      fill
+                      className="object-cover"
+                      sizes="(max-width: 768px) 100vw, 448px"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-background via-background/20 to-transparent" />
+                  </div>
+                )}
+
+                <div className={cn("p-6 relative", selectedWorkout.ride_image_url && "pt-0 -mt-8")}>
+                  {/* Discipline Badge */}
+                  <Badge className={cn("mb-3", getDisciplineColor(selectedWorkout.discipline), "text-white")}>
+                    {getDisciplineLabel(selectedWorkout.discipline)}
+                  </Badge>
+
+                  <DialogHeader className="text-left">
+                    <DialogTitle className="text-xl leading-tight">
+                      {selectedWorkout.ride_title}
+                    </DialogTitle>
+                    <DialogDescription className="flex items-center gap-4 mt-2">
+                      <span className="flex items-center gap-1.5">
+                        <User className="h-4 w-4" />
+                        {selectedWorkout.instructor_name || "TBD"}
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        <Clock className="h-4 w-4" />
+                        {Math.round(selectedWorkout.duration_seconds / 60)} minutes
+                      </span>
+                    </DialogDescription>
+                  </DialogHeader>
+
+                  <div className="flex items-center gap-2 mt-4 text-sm text-muted-foreground">
+                    <CalendarDays className="h-4 w-4" />
+                    Scheduled for {formatDateDivider(selectedWorkout.scheduled_date)}
+                    {selectedWorkout.scheduled_time && ` at ${formatTime(selectedWorkout.scheduled_time)}`}
+                  </div>
+
+                  <Button
+                    className="w-full mt-6"
+                    onClick={() => {
+                      router.push(`/planner?date=${selectedWorkout.scheduled_date}`);
+                      setSelectedWorkout(null);
+                    }}
+                  >
+                    <CalendarDays className="mr-2 h-4 w-4" />
+                    See it in your plan
+                  </Button>
+                </div>
+              </>
+            )}
+          </DialogContent>
+        </Dialog>
 
         {/* FTP History Mini */}
         <Card>
@@ -426,37 +606,84 @@ function getGreeting() {
   return "GOOD EVENING";
 }
 
-function formatWorkoutDate(date: string, time?: string): string {
-  const workoutDate = new Date(date);
+// Parse YYYY-MM-DD string as local date (not UTC).
+// Using `new Date("2024-01-15")` interprets the string as UTC midnight,
+// which can shift the date backward in negative UTC offset timezones.
+function parseLocalDate(dateString: string): Date {
+  if (!dateString || typeof dateString !== "string") {
+    return new Date(NaN);
+  }
+
+  const parts = dateString.split("-");
+  if (parts.length !== 3) {
+    return new Date(NaN);
+  }
+
+  const [year, month, day] = parts.map(Number);
+  if (isNaN(year) || isNaN(month) || isNaN(day)) {
+    return new Date(NaN);
+  }
+
+  return new Date(year, month - 1, day);
+}
+
+function formatFtpDate(dateString: string): string {
+  // FTP dates come from DB as ISO format with timezone (e.g., "2024-01-15T10:30:00Z"),
+  // so standard Date parsing correctly handles timezone conversion.
+  if (!dateString) {
+    return "Unknown date";
+  }
+
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) {
+    return "Unknown date";
+  }
+
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function formatDateDivider(dateString: string): string {
+  const date = parseLocalDate(dateString);
+
+  if (isNaN(date.getTime())) {
+    return "Unknown date";
+  }
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
 
-  const daysDiff = Math.floor((workoutDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  const daysDiff = Math.floor((date.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
-  let dateStr: string;
   if (daysDiff === 0) {
-    dateStr = "Today";
+    return "Today";
   } else if (daysDiff === 1) {
-    dateStr = "Tomorrow";
+    return "Tomorrow";
   } else {
-    dateStr = workoutDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+    return date.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
   }
-
-  if (time) {
-    const [hours, minutes] = time.split(":");
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? "PM" : "AM";
-    const hour12 = hour % 12 || 12;
-    dateStr += `, ${hour12}:${minutes} ${ampm}`;
-  }
-
-  return dateStr;
 }
 
-function formatFtpDate(dateString: string): string {
-  const date = new Date(dateString);
-  return date.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+function formatTime(time: string): string {
+  if (!time || typeof time !== "string") {
+    return "";
+  }
+
+  const parts = time.split(":");
+  if (parts.length < 2) {
+    return "";
+  }
+
+  const hour = parseInt(parts[0], 10);
+  const minutes = parseInt(parts[1], 10);
+
+  if (isNaN(hour) || isNaN(minutes) || hour < 0 || hour > 23 || minutes < 0 || minutes > 59) {
+    return "";
+  }
+
+  const ampm = hour >= 12 ? "PM" : "AM";
+  const hour12 = hour % 12 || 12;
+  return `${hour12}:${parts[1].padStart(2, "0")} ${ampm}`;
 }

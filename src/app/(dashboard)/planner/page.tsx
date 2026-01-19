@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import Image from "next/image";
+import { useSearchParams } from "next/navigation";
 import {
   DndContext,
   DragEndEvent,
@@ -92,16 +93,51 @@ const MIN_DAYS = 3;
 const MAX_DAYS = 14;
 
 export default function PlannerPage() {
+  const searchParams = useSearchParams();
+  // URL date parameter (e.g., /planner?date=2024-01-15)
+  // Expected format: YYYY-MM-DD. Invalid formats are silently ignored (falls back to today).
+  // The URL is only read on mount and browser navigation - internal navigation within the
+  // planner updates local state but does not update the URL to avoid polluting browser history.
+  const dateParam = searchParams.get("date");
+
   const { isPelotonConnected, pelotonTokenStatus } = useAuthStore();
   const { executeWithUndo } = useUndo({ toastDuration: 5000 });
-  const [startDate, setStartDate] = useState(() => startOfDay(new Date()));
+  const [startDate, setStartDate] = useState(() => {
+    if (dateParam) {
+      const parsed = parseISO(dateParam);
+      if (!isNaN(parsed.getTime())) {
+        return startOfDay(parsed);
+      }
+    }
+    return startOfDay(new Date());
+  });
   const [numberOfDays, setNumberOfDays] = useState(MIN_DAYS);
   const [workouts, setWorkouts] = useState<PlannedWorkout[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isPushing, setIsPushing] = useState(false);
   const [pushResult, setPushResult] = useState<{ success: boolean; message: string } | null>(null);
-  const [selectedDate, setSelectedDate] = useState<Date | null>(() => startOfDay(new Date()));
+  const [selectedDate, setSelectedDate] = useState<Date | null>(() => {
+    if (dateParam) {
+      const parsed = parseISO(dateParam);
+      if (!isNaN(parsed.getTime())) {
+        return startOfDay(parsed);
+      }
+    }
+    return startOfDay(new Date());
+  });
   const [activeId, setActiveId] = useState<string | null>(null);
+
+  // Sync state when URL date parameter changes (e.g., browser back/forward)
+  useEffect(() => {
+    if (dateParam) {
+      const parsed = parseISO(dateParam);
+      if (!isNaN(parsed.getTime())) {
+        const newDate = startOfDay(parsed);
+        setStartDate(newDate);
+        setSelectedDate(newDate);
+      }
+    }
+  }, [dateParam]);
 
   // Ref to track the current fetch request and cancel stale ones
   const abortControllerRef = useRef<AbortController | null>(null);
