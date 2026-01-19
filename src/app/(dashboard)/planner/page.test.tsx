@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, act, fireEvent } from "@testing-library/react";
 import PlannerPage from "./page";
-import { format, addDays, startOfDay } from "date-fns";
+import { format, addDays, startOfDay, parseISO } from "date-fns";
+
+// Configurable date param for tests
+let mockDateParam: string | null = null;
 
 // Mock next/navigation
 vi.mock("next/navigation", () => ({
@@ -10,6 +13,9 @@ vi.mock("next/navigation", () => ({
     replace: vi.fn(),
   }),
   usePathname: () => "/planner",
+  useSearchParams: () => ({
+    get: (key: string) => key === "date" ? mockDateParam : null,
+  }),
 }));
 
 // Mock sonner toast
@@ -41,6 +47,7 @@ describe("PlannerPage", () => {
     vi.clearAllMocks();
     mockAuthStore.isPelotonConnected = false;
     mockAuthStore.pelotonTokenStatus = "unknown";
+    mockDateParam = null;
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: () => Promise.resolve({ workouts: [] }),
@@ -232,6 +239,58 @@ describe("PlannerPage", () => {
       await waitFor(() => {
         expect(mockToast.error).toHaveBeenCalledWith("Failed to load workouts. Please try again.");
       });
+    });
+  });
+
+  describe("date URL parameter", () => {
+    beforeEach(() => {
+      mockAuthStore.isPelotonConnected = true;
+      mockAuthStore.pelotonTokenStatus = "valid";
+    });
+
+    it("should initialize to date from URL parameter", async () => {
+      const targetDate = "2024-03-15";
+      mockDateParam = targetDate;
+
+      await act(async () => {
+        render(<PlannerPage />);
+      });
+
+      // The date range should start from the URL date
+      const expectedStart = parseISO(targetDate);
+      const expectedEnd = addDays(expectedStart, 2);
+      const expectedRange = `${format(expectedStart, "MMM d")} - ${format(expectedEnd, "MMM d, yyyy")}`;
+
+      expect(screen.getByText(expectedRange)).toBeInTheDocument();
+    });
+
+    it("should fall back to today for invalid date parameter", async () => {
+      mockDateParam = "invalid-date";
+
+      await act(async () => {
+        render(<PlannerPage />);
+      });
+
+      // Should fall back to today's date range
+      const today = startOfDay(new Date());
+      const endDate = addDays(today, 2);
+      const expectedRange = `${format(today, "MMM d")} - ${format(endDate, "MMM d, yyyy")}`;
+
+      expect(screen.getByText(expectedRange)).toBeInTheDocument();
+    });
+
+    it("should fall back to today when no date parameter", async () => {
+      mockDateParam = null;
+
+      await act(async () => {
+        render(<PlannerPage />);
+      });
+
+      const today = startOfDay(new Date());
+      const endDate = addDays(today, 2);
+      const expectedRange = `${format(today, "MMM d")} - ${format(endDate, "MMM d, yyyy")}`;
+
+      expect(screen.getByText(expectedRange)).toBeInTheDocument();
     });
   });
 });
