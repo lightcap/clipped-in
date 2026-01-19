@@ -7,8 +7,9 @@ import {
   DragEndEvent,
   DragOverlay,
   DragStartEvent,
-  closestCenter,
+  pointerWithin,
   PointerSensor,
+  useDroppable,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
@@ -34,9 +35,13 @@ import {
   AlertCircle,
   Loader2,
   CheckCircle2,
-  Maximize2,
   CloudUpload,
   Lock,
+  MoreVertical,
+  Info,
+  CalendarDays,
+  Copy,
+  ExternalLink,
 } from "lucide-react";
 import {
   format,
@@ -61,6 +66,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Popover,
   PopoverContent,
@@ -344,16 +356,123 @@ export default function PlannerPage() {
 
     if (!over || active.id === over.id) return;
 
-    // Find the workouts being reordered
     const activeWorkout = workouts.find((w) => w.id === active.id);
+    if (!activeWorkout) return;
+
+    // Prevent moving completed workouts (defensive check)
+    if (activeWorkout.status === "completed") return;
+
+    // Determine the target date
+    let targetDate: string;
+    const overId = over.id as string;
+
+    if (overId.startsWith("day-")) {
+      // Dropped on a day container
+      targetDate = overId.replace("day-", "");
+    } else {
+      // Dropped on another workout card
+      const overWorkout = workouts.find((w) => w.id === overId);
+      if (!overWorkout) return;
+      targetDate = overWorkout.scheduled_date;
+    }
+
+    // Check if target day is in the past (not editable)
+    const targetDayDate = parseISO(targetDate);
+    const isTargetPast = isPast(targetDayDate) && !isToday(targetDayDate);
+    if (isTargetPast) return;
+
+    // Cross-day move
+    if (activeWorkout.scheduled_date !== targetDate) {
+      const previousWorkouts = workouts;
+      const previousDate = activeWorkout.scheduled_date;
+
+      // Get workouts in target day to determine sort_order
+      const targetDayWorkouts = workouts
+        .filter((w) => w.scheduled_date === targetDate)
+        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+
+      // If dropped on a workout, insert at that position; otherwise append to end
+      let newSortOrder: number;
+      if (!overId.startsWith("day-")) {
+        const overWorkout = workouts.find((w) => w.id === overId);
+        newSortOrder = overWorkout?.sort_order ?? targetDayWorkouts.length;
+      } else {
+        newSortOrder = targetDayWorkouts.length;
+      }
+
+      await executeWithUndo({
+        type: "move_workout",
+        data: { workoutId: activeWorkout.id, previousDate, newDate: targetDate },
+        message: `Workout moved to ${format(targetDayDate, "EEE, MMM d")}`,
+        execute: async () => {
+          // Optimistic update
+          setWorkouts((prev) =>
+            prev.map((w) =>
+              w.id === activeWorkout.id
+                ? { ...w, scheduled_date: targetDate, sort_order: newSortOrder }
+                : w
+            )
+          );
+
+          // Persist to server
+          let response;
+          try {
+            response = await fetch(`/api/planner/workouts/${activeWorkout.id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ scheduled_date: targetDate }),
+            });
+          } catch (error) {
+            console.error("Failed to move workout:", error);
+            setWorkouts(previousWorkouts);
+            toast.error("Failed to move workout. Please check your connection.");
+            throw error;
+          }
+
+          if (!response.ok) {
+            console.error("Failed to move workout: Server returned", response.status);
+            setWorkouts(previousWorkouts);
+            toast.error("Failed to move workout. Please try again.");
+            throw new Error(`Move failed: ${response.status}`);
+          }
+        },
+        undo: async () => {
+          // Revert to previous date (optimistic)
+          setWorkouts((prev) =>
+            prev.map((w) =>
+              w.id === activeWorkout.id
+                ? { ...w, scheduled_date: previousDate, sort_order: activeWorkout.sort_order }
+                : w
+            )
+          );
+
+          let response;
+          try {
+            response = await fetch(`/api/planner/workouts/${activeWorkout.id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ scheduled_date: previousDate }),
+            });
+          } catch (error) {
+            console.error("Failed to undo move:", error);
+            setWorkouts(previousWorkouts);
+            throw error;
+          }
+
+          if (!response.ok) {
+            console.error("Failed to undo move: Server returned", response.status);
+            setWorkouts(previousWorkouts);
+            throw new Error("Failed to undo move");
+          }
+        },
+      });
+      return;
+    }
+
+    // Same-day reorder (existing logic)
     const overWorkout = workouts.find((w) => w.id === over.id);
+    if (!overWorkout) return;
 
-    if (!activeWorkout || !overWorkout) return;
-
-    // Only allow reordering within the same day
-    if (activeWorkout.scheduled_date !== overWorkout.scheduled_date) return;
-
-    // Get workouts for this day and reorder
     const dayWorkouts = workouts
       .filter((w) => w.scheduled_date === activeWorkout.scheduled_date)
       .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
@@ -363,11 +482,9 @@ export default function PlannerPage() {
 
     const reorderedDayWorkouts = arrayMove(dayWorkouts, oldIndex, newIndex);
 
-    // Store the original order for undo
     const previousWorkouts = workouts;
     const previousOrder = dayWorkouts.map((w) => w.id);
 
-    // Calculate updated workouts
     const updatedWorkouts = workouts.map((w) => {
       const reorderedIndex = reorderedDayWorkouts.findIndex((rw) => rw.id === w.id);
       if (reorderedIndex !== -1) {
@@ -381,10 +498,8 @@ export default function PlannerPage() {
       data: { date: activeWorkout.scheduled_date, previousOrder, newOrder: reorderedDayWorkouts.map((w) => w.id) },
       message: "Workouts reordered",
       execute: async () => {
-        // Optimistic update
         setWorkouts(updatedWorkouts);
 
-        // Persist to server
         let response;
         try {
           response = await fetch("/api/planner/workouts/reorder", {
@@ -410,7 +525,6 @@ export default function PlannerPage() {
         }
       },
       undo: async () => {
-        // Revert to previous order (optimistic)
         setWorkouts(previousWorkouts);
 
         let response;
@@ -425,19 +539,123 @@ export default function PlannerPage() {
           });
         } catch (error) {
           console.error("Failed to undo reorder:", error);
-          // Revert the optimistic undo
           setWorkouts(updatedWorkouts);
           throw error;
         }
 
         if (!response.ok) {
           console.error("Failed to undo reorder: Server returned", response.status);
-          // Revert the optimistic undo
           setWorkouts(updatedWorkouts);
           throw new Error("Failed to undo reorder");
         }
       },
     });
+  };
+
+  const handleMoveToDate = async (workoutId: string, newDate: Date) => {
+    const workout = workouts.find((w) => w.id === workoutId);
+    if (!workout) return;
+
+    const previousWorkouts = workouts;
+    const previousDate = workout.scheduled_date;
+    const newDateStr = format(newDate, "yyyy-MM-dd");
+
+    await executeWithUndo({
+      type: "move_workout",
+      data: { workoutId, previousDate, newDate: newDateStr },
+      message: `Workout moved to ${format(newDate, "EEE, MMM d")}`,
+      execute: async () => {
+        // Optimistic update
+        setWorkouts((prev) =>
+          prev.map((w) =>
+            w.id === workoutId ? { ...w, scheduled_date: newDateStr } : w
+          )
+        );
+
+        let response;
+        try {
+          response = await fetch(`/api/planner/workouts/${workoutId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ scheduled_date: newDateStr }),
+          });
+        } catch (error) {
+          console.error("Failed to move workout:", error);
+          setWorkouts(previousWorkouts);
+          toast.error("Failed to move workout. Please check your connection.");
+          throw error;
+        }
+
+        if (!response.ok) {
+          console.error("Failed to move workout: Server returned", response.status);
+          setWorkouts(previousWorkouts);
+          toast.error("Failed to move workout. Please try again.");
+          throw new Error(`Move failed: ${response.status}`);
+        }
+      },
+      undo: async () => {
+        setWorkouts((prev) =>
+          prev.map((w) =>
+            w.id === workoutId ? { ...w, scheduled_date: previousDate } : w
+          )
+        );
+
+        let response;
+        try {
+          response = await fetch(`/api/planner/workouts/${workoutId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ scheduled_date: previousDate }),
+          });
+        } catch (error) {
+          console.error("Failed to undo move:", error);
+          setWorkouts(previousWorkouts);
+          toast.error("Failed to undo. Please check your connection.");
+          throw error;
+        }
+
+        if (!response.ok) {
+          console.error("Failed to undo move: Server returned", response.status);
+          setWorkouts(previousWorkouts);
+          toast.error("Failed to undo move. Please try again.");
+          throw new Error(`Failed to undo move: ${response.status}`);
+        }
+      },
+    });
+  };
+
+  const handleDuplicate = async (workout: PlannedWorkout, targetDate: Date) => {
+    const targetDateStr = format(targetDate, "yyyy-MM-dd");
+
+    try {
+      const response = await fetch("/api/planner/workouts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          peloton_ride_id: workout.peloton_ride_id,
+          ride_title: workout.ride_title,
+          ride_image_url: workout.ride_image_url,
+          instructor_name: workout.instructor_name,
+          duration_seconds: workout.duration_seconds,
+          discipline: workout.discipline,
+          scheduled_date: targetDateStr,
+          scheduled_time: workout.scheduled_time,
+          status: "planned",
+        }),
+      });
+
+      if (!response.ok) {
+        toast.error("Failed to duplicate workout. Please try again.");
+        return;
+      }
+
+      const data = await response.json();
+      setWorkouts((prev) => [...prev, data.workout]);
+      toast.success(`Workout duplicated to ${format(targetDate, "EEE, MMM d")}`);
+    } catch (error) {
+      console.error("Failed to duplicate workout:", error);
+      toast.error("Failed to duplicate workout. Please check your connection.");
+    }
   };
 
   const handlePushToStack = async () => {
@@ -704,7 +922,7 @@ export default function PlannerPage() {
       {/* Days Grid */}
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCenter}
+        collisionDetection={pointerWithin}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
@@ -747,75 +965,86 @@ export default function PlannerPage() {
                           {format(day, "d")}
                         </p>
                       </div>
-                      {isCurrentDay ? (
-                        <Badge className="bg-primary/15 text-primary border border-primary/20 font-medium">
-                          Today
-                        </Badge>
-                      ) : isSelected ? (
-                        <Badge className="bg-primary/15 text-primary border border-primary/20 font-medium">
-                          Selected
-                        </Badge>
-                      ) : isPastDay ? (
-                        <Badge
-                          variant="outline"
-                          className="text-muted-foreground/70 border-border/40 font-medium gap-1"
-                        >
-                          <Lock className="h-3 w-3" />
-                          Locked
-                        </Badge>
-                      ) : null}
+                      <DayBadge
+                        isCurrentDay={isCurrentDay}
+                        isSelected={!!isSelected}
+                        isPastDay={isPastDay}
+                      />
                     </div>
                   </CardHeader>
-                  <CardContent className="space-y-3">
+                  <CardContent>
                     {isLoading ? (
-                      <>
+                      <div className="space-y-3">
                         <Skeleton className="h-20 w-full rounded-lg" />
                         <Skeleton className="h-20 w-full rounded-lg" />
                         <Skeleton className="h-20 w-full rounded-lg" />
-                      </>
+                      </div>
                     ) : (
-                      <>
-                        {dayWorkouts.length > 0 ? (
-                          <SortableContext
-                            items={dayWorkouts.map((w) => w.id)}
-                            strategy={verticalListSortingStrategy}
-                          >
-                            {dayWorkouts.map((workout) => (
-                              <SortableWorkoutCard
-                                key={workout.id}
-                                workout={workout}
-                                isEditable={isEditable}
-                                onDelete={() => handleDeleteWorkout(workout.id)}
-                                onStatusChange={(status) =>
-                                  handleStatusChange(workout.id, status)
-                                }
-                              />
-                            ))}
-                          </SortableContext>
-                        ) : (
-                          <div className="flex h-24 items-center justify-center rounded-xl border border-dashed border-border/30 bg-secondary/20 text-muted-foreground/60 text-sm">
-                            No workouts planned
-                          </div>
+                      <DroppableDay
+                        dateStr={format(day, "yyyy-MM-dd")}
+                        isEditable={isEditable}
+                      >
+                        {(isOver) => (
+                          <>
+                            {dayWorkouts.length > 0 ? (
+                              <SortableContext
+                                items={dayWorkouts.map((w) => w.id)}
+                                strategy={verticalListSortingStrategy}
+                              >
+                                {dayWorkouts.map((workout) => (
+                                  <SortableWorkoutCard
+                                    key={workout.id}
+                                    workout={workout}
+                                    isEditable={isEditable}
+                                    onDelete={() => handleDeleteWorkout(workout.id)}
+                                    onStatusChange={(status) =>
+                                      handleStatusChange(workout.id, status)
+                                    }
+                                    onMoveToDate={(date) => handleMoveToDate(workout.id, date)}
+                                    onDuplicate={(date) => handleDuplicate(workout, date)}
+                                  />
+                                ))}
+                              </SortableContext>
+                            ) : (
+                              <div
+                                className={cn(
+                                  "flex h-24 items-center justify-center rounded-xl border border-dashed text-sm transition-colors",
+                                  activeId && isEditable
+                                    ? isOver
+                                      ? "border-primary bg-primary/10 text-primary"
+                                      : "border-primary/50 bg-primary/5 text-primary/70"
+                                    : "border-border/30 bg-secondary/20 text-muted-foreground/60"
+                                )}
+                              >
+                                {activeId && isEditable ? "Drop here" : "No workouts planned"}
+                              </div>
+                            )}
+                            {/* Add workout button */}
+                            {isEditable ? (
+                              <a
+                                href={`/search?planDate=${format(day, "yyyy-MM-dd")}`}
+                                onClick={(e) => e.stopPropagation()}
+                                className={cn(
+                                  "flex h-10 items-center justify-center gap-2 rounded-lg border border-dashed text-sm transition-colors",
+                                  isOver && activeId
+                                    ? "border-primary/40 bg-primary/5 text-primary"
+                                    : "border-border/40 bg-secondary/20 text-muted-foreground/70 hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
+                                )}
+                              >
+                                <Plus className="h-4 w-4" />
+                                Add workout
+                              </a>
+                            ) : (
+                              <div
+                                className="flex h-10 items-center justify-center gap-2 rounded-lg border border-dashed border-border/30 bg-secondary/10 text-muted-foreground/40 text-sm cursor-not-allowed"
+                              >
+                                <Lock className="h-3 w-3" />
+                                Locked
+                              </div>
+                            )}
+                          </>
                         )}
-                        {/* Add workout button */}
-                        {isEditable ? (
-                          <a
-                            href={`/search?planDate=${format(day, "yyyy-MM-dd")}`}
-                            onClick={(e) => e.stopPropagation()}
-                            className="flex h-10 items-center justify-center gap-2 rounded-lg border border-dashed border-border/40 bg-secondary/20 text-muted-foreground/70 text-sm hover:border-primary/40 hover:bg-primary/5 hover:text-primary transition-colors"
-                          >
-                            <Plus className="h-4 w-4" />
-                            Add workout
-                          </a>
-                        ) : (
-                          <div
-                            className="flex h-10 items-center justify-center gap-2 rounded-lg border border-dashed border-border/30 bg-secondary/10 text-muted-foreground/40 text-sm cursor-not-allowed"
-                          >
-                            <Lock className="h-3 w-3" />
-                            Locked
-                          </div>
-                        )}
-                      </>
+                      </DroppableDay>
                     )}
                   </CardContent>
                 </Card>
@@ -896,17 +1125,189 @@ export default function PlannerPage() {
   );
 }
 
+function DroppableDay({
+  dateStr,
+  isEditable,
+  children,
+}: {
+  dateStr: string;
+  isEditable: boolean;
+  children: (isOver: boolean) => React.ReactNode;
+}) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: `day-${dateStr}`,
+    disabled: !isEditable,
+  });
+
+  return (
+    <div ref={setNodeRef} className="space-y-3">
+      {children(isOver)}
+    </div>
+  );
+}
+
+function DayBadge({
+  isCurrentDay,
+  isSelected,
+  isPastDay,
+}: {
+  isCurrentDay: boolean;
+  isSelected: boolean;
+  isPastDay: boolean;
+}) {
+  if (isCurrentDay) {
+    return (
+      <Badge className="bg-primary/15 text-primary border border-primary/20 font-medium">
+        Today
+      </Badge>
+    );
+  }
+  if (isSelected) {
+    return (
+      <Badge className="bg-primary/15 text-primary border border-primary/20 font-medium">
+        Selected
+      </Badge>
+    );
+  }
+  if (isPastDay) {
+    return (
+      <Badge
+        variant="outline"
+        className="text-muted-foreground/70 border-border/40 font-medium gap-1"
+      >
+        <Lock className="h-3 w-3" />
+        Locked
+      </Badge>
+    );
+  }
+  return null;
+}
+
+function DatePickerDialog({
+  open,
+  onOpenChange,
+  title,
+  description,
+  confirmLabel,
+  selectedDate,
+  onSelect,
+  onConfirm,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: string;
+  description: string;
+  confirmLabel: string;
+  selectedDate: Date | undefined;
+  onSelect: (date: Date | undefined) => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
+        <div className="py-4">
+          <Calendar
+            mode="single"
+            selected={selectedDate}
+            onSelect={onSelect}
+            disabled={(date) => isPast(date) && !isToday(date)}
+            className="rounded-md border mx-auto"
+          />
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button disabled={!selectedDate} onClick={onConfirm}>
+            {confirmLabel}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function StatusButton({
+  workout,
+  isEditable,
+  onStatusChange,
+  onMarkComplete,
+}: {
+  workout: PlannedWorkout;
+  isEditable: boolean;
+  onStatusChange: (status: PlannedWorkout["status"]) => void;
+  onMarkComplete: () => void;
+}) {
+  const isCompleted = workout.status === "completed";
+
+  if (workout.pushed_to_stack) {
+    return (
+      <div className="p-1.5 rounded-md" title="Synced to Peloton stack">
+        <CloudUpload className="h-3.5 w-3.5 text-primary" />
+      </div>
+    );
+  }
+
+  if (isCompleted) {
+    if (isEditable) {
+      return (
+        <button
+          onClick={() => onStatusChange("planned")}
+          className="p-1.5 rounded-md hover:bg-green-500/10 transition-colors"
+          title="Mark as planned"
+        >
+          <Check className="h-3.5 w-3.5 text-green-500" />
+        </button>
+      );
+    }
+    return (
+      <div className="p-1.5 rounded-md" title="Completed">
+        <Check className="h-3.5 w-3.5 text-green-500" />
+      </div>
+    );
+  }
+
+  if (isEditable) {
+    return (
+      <button
+        onClick={onMarkComplete}
+        className="p-1.5 rounded-md hover:bg-green-500/10 transition-colors"
+        title="Mark as complete"
+      >
+        <Check className="h-3.5 w-3.5 text-muted-foreground/50 hover:text-green-500 transition-colors" />
+      </button>
+    );
+  }
+
+  return (
+    <div className="p-1.5 rounded-md" title="Not completed">
+      <Check className="h-3.5 w-3.5 text-muted-foreground/30" />
+    </div>
+  );
+}
+
 function SortableWorkoutCard({
   workout,
   isEditable,
   onDelete,
   onStatusChange,
+  onMoveToDate,
+  onDuplicate,
 }: {
   workout: PlannedWorkout;
   isEditable: boolean;
   onDelete: () => void;
   onStatusChange: (status: PlannedWorkout["status"]) => void;
+  onMoveToDate?: (date: Date) => void;
+  onDuplicate?: (date: Date) => void;
 }) {
+  const isCompleted = workout.status === "completed";
+  const canDrag = isEditable && !isCompleted;
+
   const {
     attributes,
     listeners,
@@ -914,7 +1315,7 @@ function SortableWorkoutCard({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: workout.id, disabled: !isEditable });
+  } = useSortable({ id: workout.id, disabled: !canDrag });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -927,9 +1328,12 @@ function SortableWorkoutCard({
       <WorkoutCardWithHandle
         workout={workout}
         isEditable={isEditable}
+        canDrag={canDrag}
         onDelete={onDelete}
         onStatusChange={onStatusChange}
-        dragHandleProps={isEditable ? { ...attributes, ...listeners } : undefined}
+        onMoveToDate={onMoveToDate}
+        onDuplicate={onDuplicate}
+        dragHandleProps={canDrag ? { ...attributes, ...listeners } : undefined}
       />
     </div>
   );
@@ -938,25 +1342,50 @@ function SortableWorkoutCard({
 function WorkoutCardWithHandle({
   workout,
   isEditable = true,
+  canDrag,
   onDelete,
   onStatusChange,
+  onMoveToDate,
+  onDuplicate,
   dragHandleProps,
 }: {
   workout: PlannedWorkout;
   isEditable?: boolean;
+  canDrag?: boolean;
   onDelete: () => void;
   onStatusChange: (status: PlannedWorkout["status"]) => void;
+  onMoveToDate?: (date: Date) => void;
+  onDuplicate?: (date: Date) => void;
   dragHandleProps?: Record<string, unknown>;
 }) {
+  // Default canDrag to isEditable if not provided (for DragOverlay usage)
+  const isDraggable = canDrag ?? isEditable;
   const [showDetails, setShowDetails] = useState(false);
+  const [showMoveDialog, setShowMoveDialog] = useState(false);
+  const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showFutureWarning, setShowFutureWarning] = useState(false);
+  const [selectedMoveDate, setSelectedMoveDate] = useState<Date | undefined>();
+  const [selectedDuplicateDate, setSelectedDuplicateDate] = useState<Date | undefined>();
   const disciplineLabel = getDisciplineLabel(workout.discipline);
   const disciplineColor = getDisciplineColor(workout.discipline);
   const isCompleted = workout.status === "completed";
+  const workoutDate = parseISO(workout.scheduled_date);
+  const isFutureWorkout = !isToday(workoutDate) && !isPast(workoutDate);
+
+  const handleMarkComplete = () => {
+    if (isFutureWorkout) {
+      setShowFutureWarning(true);
+    } else {
+      onStatusChange("completed");
+    }
+  };
 
   return (
     <>
       <div
-        className="relative overflow-hidden rounded-xl border border-border/40 bg-secondary/40 transition-all duration-200 hover:border-border/60"
+        className="relative overflow-hidden rounded-xl border border-border/40 bg-secondary/40 transition-all duration-200 hover:border-border/60 cursor-pointer"
+        onClick={() => setShowDetails(true)}
       >
         {/* Background cover image */}
         {workout.ride_image_url && (
@@ -978,15 +1407,16 @@ function WorkoutCardWithHandle({
             {...dragHandleProps}
             className={cn(
               "flex items-center justify-center w-7 border-r border-border/30 rounded-l-xl transition-colors shrink-0",
-              isEditable
+              isDraggable
                 ? "cursor-grab active:cursor-grabbing hover:bg-white/5 touch-none"
                 : "cursor-not-allowed"
             )}
+            title={isDraggable ? "Drag to reorder or move to another day" : isCompleted ? "Completed workouts can't be moved" : undefined}
           >
             <GripVertical
               className={cn(
                 "h-4 w-4",
-                isEditable ? "text-muted-foreground/60" : "text-muted-foreground/30"
+                isDraggable ? "text-muted-foreground/60" : "text-muted-foreground/30"
               )}
             />
           </div>
@@ -1023,72 +1453,62 @@ function WorkoutCardWithHandle({
               </p>
 
               {/* Action buttons - always visible */}
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowDetails(true);
-                  }}
-                  className="p-1.5 rounded-md hover:bg-primary/10 transition-colors"
-                  title="View details"
-                >
-                  <Maximize2 className="h-3.5 w-3.5 text-muted-foreground/50 hover:text-primary" />
-                </button>
-                {workout.pushed_to_stack ? (
-                  <div
-                    className="p-1.5 rounded-md"
-                    title="Synced to Peloton stack"
-                  >
-                    <CloudUpload className="h-3.5 w-3.5 text-primary" />
-                  </div>
-                ) : isCompleted ? (
-                  // Completed: show green check (clickable to toggle if editable)
-                  isEditable ? (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onStatusChange("planned");
-                      }}
-                      className="p-1.5 rounded-md hover:bg-green-500/10 transition-colors"
-                      title="Mark as planned"
-                    >
-                      <Check className="h-3.5 w-3.5 text-green-500" />
-                    </button>
-                  ) : (
-                    <div className="p-1.5 rounded-md" title="Completed">
-                      <Check className="h-3.5 w-3.5 text-green-500" />
-                    </div>
-                  )
-                ) : isEditable ? (
-                  // Not completed + editable: show gray check to mark complete
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onStatusChange("completed");
-                    }}
-                    className="p-1.5 rounded-md hover:bg-green-500/10 transition-colors"
-                    title="Mark as complete"
-                  >
-                    <Check className="h-3.5 w-3.5 text-muted-foreground/50 hover:text-green-500 transition-colors" />
-                  </button>
-                ) : (
-                  // Not completed + past day: show gray check (non-clickable)
-                  <div className="p-1.5 rounded-md" title="Not completed">
-                    <Check className="h-3.5 w-3.5 text-muted-foreground/30" />
-                  </div>
-                )}
+              <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                <StatusButton
+                  workout={workout}
+                  isEditable={isEditable}
+                  onStatusChange={onStatusChange}
+                  onMarkComplete={handleMarkComplete}
+                />
                 {isEditable && (
                   <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDelete();
-                    }}
+                    onClick={() => setShowDeleteConfirm(true)}
                     className="p-1.5 rounded-md hover:bg-destructive/10 transition-colors"
                     title="Remove workout"
                   >
                     <Trash2 className="h-3.5 w-3.5 text-muted-foreground/50 hover:text-destructive" />
                   </button>
                 )}
+                {/* Context menu */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      className="p-1.5 rounded-md hover:bg-accent transition-colors"
+                      title="More options"
+                    >
+                      <MoreVertical className="h-3.5 w-3.5 text-muted-foreground/50" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    <DropdownMenuItem onClick={() => setShowDetails(true)}>
+                      <Info className="mr-2 h-4 w-4" />
+                      View details
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    {isEditable && !isCompleted && onMoveToDate && (
+                      <DropdownMenuItem onClick={() => setShowMoveDialog(true)}>
+                        <CalendarDays className="mr-2 h-4 w-4" />
+                        Move to date...
+                      </DropdownMenuItem>
+                    )}
+                    {onDuplicate && (
+                      <DropdownMenuItem onClick={() => setShowDuplicateDialog(true)}>
+                        <Copy className="mr-2 h-4 w-4" />
+                        Duplicate to...
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem asChild>
+                      <a
+                        href={`https://members.onepeloton.com/classes/cycling?modal=classDetailsModal&classId=${workout.peloton_ride_id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <ExternalLink className="mr-2 h-4 w-4" />
+                        Open in Peloton
+                      </a>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
           </div>
@@ -1167,8 +1587,13 @@ function WorkoutCardWithHandle({
                   variant="outline"
                   className="flex-1 gap-2"
                   onClick={() => {
-                    onStatusChange("completed");
-                    setShowDetails(false);
+                    if (isFutureWorkout) {
+                      setShowDetails(false);
+                      setShowFutureWarning(true);
+                    } else {
+                      onStatusChange("completed");
+                      setShowDetails(false);
+                    }
                   }}
                 >
                   <Check className="h-4 w-4" />
@@ -1186,8 +1611,8 @@ function WorkoutCardWithHandle({
                   variant="destructive"
                   className="gap-2"
                   onClick={() => {
-                    onDelete();
                     setShowDetails(false);
+                    setShowDeleteConfirm(true);
                   }}
                 >
                   <Trash2 className="h-4 w-4" />
@@ -1195,6 +1620,88 @@ function WorkoutCardWithHandle({
                 </Button>
               )}
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Move to date dialog */}
+      <DatePickerDialog
+        open={showMoveDialog}
+        onOpenChange={setShowMoveDialog}
+        title="Move workout"
+        description="Select a new date for this workout"
+        confirmLabel="Move"
+        selectedDate={selectedMoveDate}
+        onSelect={setSelectedMoveDate}
+        onConfirm={() => {
+          if (selectedMoveDate && onMoveToDate) {
+            onMoveToDate(selectedMoveDate);
+            setShowMoveDialog(false);
+            setSelectedMoveDate(undefined);
+          }
+        }}
+      />
+
+      {/* Duplicate to date dialog */}
+      <DatePickerDialog
+        open={showDuplicateDialog}
+        onOpenChange={setShowDuplicateDialog}
+        title="Duplicate workout"
+        description="Select a date to copy this workout to"
+        confirmLabel="Duplicate"
+        selectedDate={selectedDuplicateDate}
+        onSelect={setSelectedDuplicateDate}
+        onConfirm={() => {
+          if (selectedDuplicateDate && onDuplicate) {
+            onDuplicate(selectedDuplicateDate);
+            setShowDuplicateDialog(false);
+            setSelectedDuplicateDate(undefined);
+          }
+        }}
+      />
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Remove workout?</DialogTitle>
+            <DialogDescription>
+              This will remove &quot;{workout.ride_title}&quot; from your plan.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" onClick={() => setShowDeleteConfirm(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                onDelete();
+                setShowDeleteConfirm(false);
+              }}
+            >
+              Remove
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Future workout warning dialog */}
+      <Dialog open={showFutureWarning} onOpenChange={setShowFutureWarning}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-amber-500" />
+              Can&apos;t mark as complete
+            </DialogTitle>
+            <DialogDescription>
+              This workout is scheduled for {format(workoutDate, "EEEE, MMMM d")}. You can only mark workouts as complete on or after their scheduled date.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end mt-4">
+            <Button onClick={() => setShowFutureWarning(false)}>
+              Got it
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
