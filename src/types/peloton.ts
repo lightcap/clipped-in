@@ -139,7 +139,7 @@ export function getDisciplineColor(discipline: string): string {
   return DISCIPLINES[discipline as Discipline]?.color ?? "bg-gray-500";
 }
 
-// Stack management types
+// Stack management types (REST API)
 export interface PelotonStackClass {
   id: string;
   peloton_id: string;
@@ -154,4 +154,46 @@ export interface PelotonStack {
   id: string;
   classes: PelotonStackClass[];
   total_classes: number;
+}
+
+// GraphQL Stack types
+export interface GraphQLStackedClass {
+  playOrder: number;
+  pelotonClass: {
+    classId: string;
+    title: string;
+    duration: number;
+    fitnessDiscipline?: {
+      slug: string;
+      displayName: string;
+    };
+    instructor?: {
+      name: string;
+    };
+  };
+}
+
+export interface GraphQLUserStack {
+  stackedClassList: GraphQLStackedClass[];
+}
+
+export interface GraphQLStackResponse {
+  numClasses: number;
+  totalTime: number;
+  userStack: GraphQLUserStack | null;
+}
+
+export interface ModifyStackResult {
+  success: boolean;
+  numClasses: number;
+  classIds: string[];
+  error?: string;
+}
+
+export interface SyncResult {
+  success: boolean;
+  pushed: number;
+  expected: number;
+  classIds: string[];
+  error?: string;
 }

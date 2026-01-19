@@ -6,9 +6,51 @@ import type {
   PelotonSearchParams,
   PelotonSearchResponse,
   PelotonStack,
+  GraphQLStackResponse,
+  ModifyStackResult,
 } from "@/types/peloton";
 
 const PELOTON_API_URL = "https://api.onepeloton.com";
+const PELOTON_GRAPHQL_URL = "https://gql-graphql-gateway.prod.k8s.onepeloton.com/graphql";
+
+/**
+ * Validate that a Peloton class/ride ID is in the expected format.
+ * Peloton IDs are 32-character hexadecimal strings.
+ */
+export function isValidPelotonClassId(id: string): boolean {
+  return /^[a-f0-9]{32}$/i.test(id);
+}
+
+/**
+ * Encode a ride ID into the base64 format required by Peloton's GraphQL API.
+ * Format: base64(JSON.stringify({ home_peloton_id, ride_id, studio_peloton_id, type }))
+ * Note: Peloton's format uses spaces after colons and commas in the JSON
+ * @throws {Error} If the rideId is not a valid 32-character hex string
+ */
+export function encodeClassIdForGraphQL(rideId: string, type: "on_demand" | "live" = "on_demand"): string {
+  if (!isValidPelotonClassId(rideId)) {
+    throw new Error(`Invalid Peloton class ID format: ${rideId.substring(0, 50)}`);
+  }
+  // Match the exact format Peloton uses (with spaces after colons and commas)
+  const json = `{"home_peloton_id": null, "ride_id": "${rideId}", "studio_peloton_id": null, "type": "${type}"}`;
+  return Buffer.from(json).toString("base64");
+}
+
+/**
+ * Decode a base64-encoded class ID from Peloton's GraphQL API back to a ride ID.
+ */
+export function decodeGraphQLClassId(encodedId: string): string | null {
+  try {
+    const decoded = JSON.parse(Buffer.from(encodedId, "base64").toString("utf-8"));
+    return decoded.ride_id || null;
+  } catch (error) {
+    console.error("Failed to decode GraphQL class ID:", {
+      encodedId: encodedId.substring(0, 50),
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+    return null;
+  }
+}
 
 export class PelotonClient {
   private accessToken: string;
@@ -211,6 +253,230 @@ export class PelotonClient {
     }
 
     return results;
+  }
+
+  // GraphQL Stack Methods
+
+  private async graphqlFetch<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
+    const response = await fetch(PELOTON_GRAPHQL_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ query, variables }),
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new PelotonAuthError("Token expired or invalid");
+      }
+      throw new PelotonApiError(
+        `GraphQL request failed: ${response.statusText}`,
+        response.status
+      );
+    }
+
+    const result = await response.json();
+
+    if (result.errors && result.errors.length > 0) {
+      const errorMessage = result.errors.map((e: { message: string }) => e.message).join(", ");
+      throw new PelotonApiError(`GraphQL error: ${errorMessage}`, 400);
+    }
+
+    return result.data;
+  }
+
+  /**
+   * View the user's current stack using GraphQL.
+   * Returns the list of classes in the stack with their order and details.
+   * @throws {PelotonAuthError} When authentication fails (token expired/invalid)
+   */
+  async viewUserStackGraphQL(): Promise<GraphQLStackResponse | null> {
+    const query = `
+      query ViewUserStack {
+        viewUserStack {
+          numClasses
+          totalTime
+          ... on StackResponseSuccess {
+            userStack {
+              stackedClassList {
+                playOrder
+                pelotonClass {
+                  classId
+                  title
+                  duration
+                  fitnessDiscipline { slug displayName }
+                  instructor { name }
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    try {
+      const data = await this.graphqlFetch<{ viewUserStack: GraphQLStackResponse }>(query);
+      return data.viewUserStack;
+    } catch (error) {
+      if (error instanceof PelotonAuthError) {
+        throw error; // Re-throw auth errors for caller to handle
+      }
+      console.error("Error fetching stack via GraphQL:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Replace the entire stack with a new ordered list of classes using the ModifyStack mutation.
+   * This is atomic - the entire stack is replaced at once.
+   *
+   * @param rideIds - Array of Peloton ride IDs (not encoded). Max 10 classes.
+   * @returns Result including success status, number of classes, and the class IDs in the stack
+   */
+  async modifyStack(rideIds: string[]): Promise<ModifyStackResult> {
+    // Peloton stack has a max of 10 classes
+    const limitedRideIds = rideIds.slice(0, 10);
+
+    // Encode ride IDs for GraphQL
+    const encodedClassIds = limitedRideIds.map(id => encodeClassIdForGraphQL(id));
+
+    const query = `
+      mutation ModifyStack($input: ModifyStackInput!) {
+        modifyStack(input: $input) {
+          numClasses
+          totalTime
+          userStack {
+            stackedClassList {
+              playOrder
+              pelotonClass {
+                classId
+                title
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const variables = {
+      input: {
+        pelotonClassIdList: encodedClassIds,
+      },
+    };
+
+    try {
+      const data = await this.graphqlFetch<{ modifyStack: GraphQLStackResponse }>(query, variables);
+      const response = data.modifyStack;
+
+      // Extract the actual class IDs from the response for verification
+      const responseClassIds = response.userStack?.stackedClassList
+        .map(item => item.pelotonClass.classId)
+        .filter((id): id is string => id !== null) ?? [];
+
+      return {
+        success: true,
+        numClasses: response.numClasses,
+        classIds: responseClassIds,
+      };
+    } catch (error) {
+      if (error instanceof PelotonAuthError) {
+        throw error; // Re-throw auth errors for caller to handle
+      }
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      console.error("Error modifying stack:", error);
+      return {
+        success: false,
+        numClasses: 0,
+        classIds: [],
+        error: errorMessage,
+      };
+    }
+  }
+
+  /**
+   * Clear the stack completely using the ModifyStack mutation with an empty list.
+   */
+  async clearStackGraphQL(): Promise<boolean> {
+    const result = await this.modifyStack([]);
+    return result.success && result.numClasses === 0;
+  }
+
+  /**
+   * Add a single class to the stack using the AddClassToStack mutation.
+   * This is the proper way to add new classes to the stack.
+   */
+  async addClassToStackGraphQL(rideId: string): Promise<ModifyStackResult> {
+    const encodedClassId = encodeClassIdForGraphQL(rideId);
+
+    const query = `
+      mutation AddClassToStack($input: AddClassToStackInput!) {
+        addClassToStack(input: $input) {
+          numClasses
+          totalTime
+          userStack {
+            stackedClassList {
+              playOrder
+              pelotonClass {
+                classId
+                title
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const variables = {
+      input: {
+        pelotonClassId: encodedClassId,
+      },
+    };
+
+    try {
+      const data = await this.graphqlFetch<{ addClassToStack: GraphQLStackResponse }>(query, variables);
+      const response = data.addClassToStack;
+
+      const responseClassIds = response.userStack?.stackedClassList
+        .map(item => item.pelotonClass.classId)
+        .filter((id): id is string => id !== null) ?? [];
+
+      return {
+        success: true,
+        numClasses: response.numClasses,
+        classIds: responseClassIds,
+      };
+    } catch (error) {
+      if (error instanceof PelotonAuthError) {
+        throw error;
+      }
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      console.error("Error adding class to stack:", error);
+      return {
+        success: false,
+        numClasses: 0,
+        classIds: [],
+        error: errorMessage,
+      };
+    }
+  }
+
+  /**
+   * Add multiple classes to the stack one at a time using AddClassToStack.
+   */
+  async addMultipleToStack(rideIds: string[]): Promise<ModifyStackResult> {
+    const limitedRideIds = rideIds.slice(0, 10);
+    let lastResult: ModifyStackResult = { success: true, numClasses: 0, classIds: [] };
+
+    for (const rideId of limitedRideIds) {
+      lastResult = await this.addClassToStackGraphQL(rideId);
+      if (!lastResult.success) {
+        return lastResult;
+      }
+    }
+
+    return lastResult;
   }
 }
 
