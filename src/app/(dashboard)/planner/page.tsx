@@ -36,6 +36,7 @@ import {
   CheckCircle2,
   Maximize2,
   CloudUpload,
+  Lock,
 } from "lucide-react";
 import {
   format,
@@ -70,7 +71,7 @@ import { toast } from "sonner";
 import { useAuthStore } from "@/lib/stores/auth-store";
 import { useUndo } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
-import { DISCIPLINES, getDisciplineLabel, getDisciplineColor } from "@/types/peloton";
+import { getDisciplineLabel, getDisciplineColor } from "@/types/peloton";
 
 interface PlannedWorkout {
   id: string;
@@ -713,6 +714,7 @@ export default function PlannerPage() {
               const dayWorkouts = getWorkoutsForDay(day);
               const isCurrentDay = isToday(day);
               const isPastDay = isPast(day) && !isCurrentDay;
+              const isEditable = !isPastDay;
               const isSelected = selectedDate && isSameDay(day, selectedDate);
 
               return (
@@ -750,6 +752,15 @@ export default function PlannerPage() {
                           Today
                         </Badge>
                       )}
+                      {isPastDay && (
+                        <Badge
+                          variant="outline"
+                          className="text-muted-foreground/70 border-border/40 font-medium gap-1"
+                        >
+                          <Lock className="h-3 w-3" />
+                          Locked
+                        </Badge>
+                      )}
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-3">
@@ -770,6 +781,7 @@ export default function PlannerPage() {
                               <SortableWorkoutCard
                                 key={workout.id}
                                 workout={workout}
+                                isEditable={isEditable}
                                 onDelete={() => handleDeleteWorkout(workout.id)}
                                 onStatusChange={(status) =>
                                   handleStatusChange(workout.id, status)
@@ -783,14 +795,23 @@ export default function PlannerPage() {
                           </div>
                         )}
                         {/* Add workout button */}
-                        <a
-                          href={`/search?planDate=${format(day, "yyyy-MM-dd")}`}
-                          onClick={(e) => e.stopPropagation()}
-                          className="flex h-10 items-center justify-center gap-2 rounded-lg border border-dashed border-border/40 bg-secondary/20 text-muted-foreground/70 text-sm hover:border-primary/40 hover:bg-primary/5 hover:text-primary transition-colors"
-                        >
-                          <Plus className="h-4 w-4" />
-                          Add workout
-                        </a>
+                        {isEditable ? (
+                          <a
+                            href={`/search?planDate=${format(day, "yyyy-MM-dd")}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex h-10 items-center justify-center gap-2 rounded-lg border border-dashed border-border/40 bg-secondary/20 text-muted-foreground/70 text-sm hover:border-primary/40 hover:bg-primary/5 hover:text-primary transition-colors"
+                          >
+                            <Plus className="h-4 w-4" />
+                            Add workout
+                          </a>
+                        ) : (
+                          <div
+                            className="flex h-10 items-center justify-center gap-2 rounded-lg border border-dashed border-border/30 bg-secondary/10 text-muted-foreground/40 text-sm cursor-not-allowed"
+                          >
+                            <Lock className="h-3 w-3" />
+                            Locked
+                          </div>
+                        )}
                       </>
                     )}
                   </CardContent>
@@ -806,6 +827,7 @@ export default function PlannerPage() {
             <div className="opacity-90 shadow-xl">
               <WorkoutCardWithHandle
                 workout={workouts.find((w) => w.id === activeId)!}
+                isEditable={true} // Drag is only enabled for editable days
                 onDelete={() => {}}
                 onStatusChange={() => {}}
               />
@@ -873,10 +895,12 @@ export default function PlannerPage() {
 
 function SortableWorkoutCard({
   workout,
+  isEditable,
   onDelete,
   onStatusChange,
 }: {
   workout: PlannedWorkout;
+  isEditable: boolean;
   onDelete: () => void;
   onStatusChange: (status: PlannedWorkout["status"]) => void;
 }) {
@@ -887,7 +911,7 @@ function SortableWorkoutCard({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: workout.id });
+  } = useSortable({ id: workout.id, disabled: !isEditable });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -899,9 +923,10 @@ function SortableWorkoutCard({
     <div ref={setNodeRef} style={style}>
       <WorkoutCardWithHandle
         workout={workout}
+        isEditable={isEditable}
         onDelete={onDelete}
         onStatusChange={onStatusChange}
-        dragHandleProps={{ ...attributes, ...listeners }}
+        dragHandleProps={isEditable ? { ...attributes, ...listeners } : undefined}
       />
     </div>
   );
@@ -909,11 +934,13 @@ function SortableWorkoutCard({
 
 function WorkoutCardWithHandle({
   workout,
+  isEditable = true,
   onDelete,
   onStatusChange,
   dragHandleProps,
 }: {
   workout: PlannedWorkout;
+  isEditable?: boolean;
   onDelete: () => void;
   onStatusChange: (status: PlannedWorkout["status"]) => void;
   dragHandleProps?: Record<string, unknown>;
@@ -946,9 +973,19 @@ function WorkoutCardWithHandle({
           {/* Drag Handle - on top of image */}
           <div
             {...dragHandleProps}
-            className="flex items-center justify-center w-7 border-r border-border/30 cursor-grab active:cursor-grabbing hover:bg-white/5 rounded-l-xl transition-colors shrink-0 touch-none"
+            className={cn(
+              "flex items-center justify-center w-7 border-r border-border/30 rounded-l-xl transition-colors shrink-0",
+              isEditable
+                ? "cursor-grab active:cursor-grabbing hover:bg-white/5 touch-none"
+                : "cursor-not-allowed"
+            )}
           >
-            <GripVertical className="h-4 w-4 text-muted-foreground/60" />
+            <GripVertical
+              className={cn(
+                "h-4 w-4",
+                isEditable ? "text-muted-foreground/60" : "text-muted-foreground/30"
+              )}
+            />
           </div>
 
           {/* Content */}
@@ -1001,33 +1038,54 @@ function WorkoutCardWithHandle({
                   >
                     <CloudUpload className="h-3.5 w-3.5 text-primary" />
                   </div>
-                ) : (
+                ) : isCompleted ? (
+                  // Completed: show green check (clickable to toggle if editable)
+                  isEditable ? (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onStatusChange("planned");
+                      }}
+                      className="p-1.5 rounded-md hover:bg-green-500/10 transition-colors"
+                      title="Mark as planned"
+                    >
+                      <Check className="h-3.5 w-3.5 text-green-500" />
+                    </button>
+                  ) : (
+                    <div className="p-1.5 rounded-md" title="Completed">
+                      <Check className="h-3.5 w-3.5 text-green-500" />
+                    </div>
+                  )
+                ) : isEditable ? (
+                  // Not completed + editable: show gray check to mark complete
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      onStatusChange(isCompleted ? "planned" : "completed");
+                      onStatusChange("completed");
                     }}
                     className="p-1.5 rounded-md hover:bg-green-500/10 transition-colors"
-                    title={isCompleted ? "Mark as planned" : "Mark as complete"}
+                    title="Mark as complete"
                   >
-                    <Check className={cn(
-                      "h-3.5 w-3.5 transition-colors",
-                      isCompleted
-                        ? "text-green-500"
-                        : "text-muted-foreground/50 hover:text-green-500"
-                    )} />
+                    <Check className="h-3.5 w-3.5 text-muted-foreground/50 hover:text-green-500 transition-colors" />
+                  </button>
+                ) : (
+                  // Not completed + past day: show gray check (non-clickable)
+                  <div className="p-1.5 rounded-md" title="Not completed">
+                    <Check className="h-3.5 w-3.5 text-muted-foreground/30" />
+                  </div>
+                )}
+                {isEditable && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDelete();
+                    }}
+                    className="p-1.5 rounded-md hover:bg-destructive/10 transition-colors"
+                    title="Remove workout"
+                  >
+                    <Trash2 className="h-3.5 w-3.5 text-muted-foreground/50 hover:text-destructive" />
                   </button>
                 )}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDelete();
-                  }}
-                  className="p-1.5 rounded-md hover:bg-destructive/10 transition-colors"
-                  title="Remove workout"
-                >
-                  <Trash2 className="h-3.5 w-3.5 text-muted-foreground/50 hover:text-destructive" />
-                </button>
               </div>
             </div>
           </div>
@@ -1080,30 +1138,59 @@ function WorkoutCardWithHandle({
                   <CloudUpload className="h-4 w-4" />
                   Synced to Stack
                 </div>
-              ) : (
+              ) : isCompleted ? (
+                // Completed: show green indicator (clickable to toggle if editable)
+                isEditable ? (
+                  <Button
+                    variant="outline"
+                    className="flex-1 gap-2 border-green-500/50 text-green-500"
+                    onClick={() => {
+                      onStatusChange("planned");
+                      setShowDetails(false);
+                    }}
+                  >
+                    <Check className="h-4 w-4" />
+                    Mark Planned
+                  </Button>
+                ) : (
+                  <div className="flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-md bg-green-500/10 text-green-500 border border-green-500/20">
+                    <Check className="h-4 w-4" />
+                    Completed
+                  </div>
+                )
+              ) : isEditable ? (
+                // Not completed + editable: show mark complete button
                 <Button
                   variant="outline"
-                  className={cn("flex-1 gap-2", isCompleted && "border-green-500/50 text-green-500")}
+                  className="flex-1 gap-2"
                   onClick={() => {
-                    onStatusChange(isCompleted ? "planned" : "completed");
+                    onStatusChange("completed");
                     setShowDetails(false);
                   }}
                 >
                   <Check className="h-4 w-4" />
-                  {isCompleted ? "Mark Planned" : "Mark Complete"}
+                  Mark Complete
+                </Button>
+              ) : (
+                // Not completed + past day: show not completed indicator
+                <div className="flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-md bg-muted/50 text-muted-foreground/50 border border-border/40">
+                  <Check className="h-4 w-4" />
+                  Not Completed
+                </div>
+              )}
+              {isEditable && (
+                <Button
+                  variant="destructive"
+                  className="gap-2"
+                  onClick={() => {
+                    onDelete();
+                    setShowDetails(false);
+                  }}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Remove
                 </Button>
               )}
-              <Button
-                variant="destructive"
-                className="gap-2"
-                onClick={() => {
-                  onDelete();
-                  setShowDetails(false);
-                }}
-              >
-                <Trash2 className="h-4 w-4" />
-                Remove
-              </Button>
             </div>
           </div>
         </DialogContent>
