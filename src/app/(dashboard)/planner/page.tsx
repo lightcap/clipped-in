@@ -699,37 +699,38 @@ export default function PlannerPage() {
     setPushResult(null);
 
     try {
-      // Push tomorrow's workouts to stack
-      const tomorrow = format(new Date(), "yyyy-MM-dd");
+      // Sync today's workouts to stack
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       const response = await fetch("/api/stack/push", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          date: tomorrow,
-          clearExisting: false,
-        }),
+        body: JSON.stringify({ timezone }),
       });
 
       const data = await response.json();
 
       if (response.ok) {
+        let message = data.message || `Synced ${data.pushed} workout(s) to stack`;
+        if (data.warning) {
+          message += ` (${data.warning})`;
+        }
         setPushResult({
           success: true,
-          message: data.message || `Pushed ${data.pushed} workout(s) to stack`,
+          message,
         });
-        // Refresh workouts to update pushed_to_stack status
+        // Refresh workouts to update status
         fetchWorkouts();
       } else {
         setPushResult({
           success: false,
-          message: data.error || "Failed to push workouts",
+          message: data.error || "Failed to sync workouts",
         });
       }
     } catch (error) {
       console.error("Failed to push to stack:", error);
       setPushResult({
         success: false,
-        message: "An error occurred while pushing to stack",
+        message: "An error occurred while syncing to stack",
       });
     } finally {
       setIsPushing(false);
