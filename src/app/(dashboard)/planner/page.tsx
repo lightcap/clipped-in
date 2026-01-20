@@ -138,6 +138,13 @@ export default function PlannerPage() {
     return startOfDay(new Date());
   });
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [recentlyMovedId, setRecentlyMovedId] = useState<string | null>(null);
+  // Track cross-day move context for shift animations on sibling cards
+  const [crossDayMoveContext, setCrossDayMoveContext] = useState<{
+    sourceDate: string;
+    targetDate: string;
+    movedId: string;
+  } | null>(null);
 
   // Sync state when URL date parameter changes (e.g., browser back/forward)
   useEffect(() => {
@@ -441,6 +448,18 @@ export default function PlannerPage() {
         data: { workoutId: activeWorkout.id, previousDate, newDate: targetDate },
         message: `Workout moved to ${format(targetDayDate, "EEE, MMM d")}`,
         execute: async () => {
+          // Track this card for entry animation and context for sibling shift animations
+          setRecentlyMovedId(activeWorkout.id);
+          setCrossDayMoveContext({
+            sourceDate: previousDate,
+            targetDate: targetDate,
+            movedId: activeWorkout.id,
+          });
+          setTimeout(() => {
+            setRecentlyMovedId(null);
+            setCrossDayMoveContext(null);
+          }, 400);
+
           // Optimistic update
           setWorkouts((prev) =>
             prev.map((w) =>
@@ -601,6 +620,18 @@ export default function PlannerPage() {
       data: { workoutId, previousDate, newDate: newDateStr },
       message: `Workout moved to ${format(newDate, "EEE, MMM d")}`,
       execute: async () => {
+        // Track this card for entry animation and context for sibling shift animations
+        setRecentlyMovedId(workoutId);
+        setCrossDayMoveContext({
+          sourceDate: previousDate,
+          targetDate: newDateStr,
+          movedId: workoutId,
+        });
+        setTimeout(() => {
+          setRecentlyMovedId(null);
+          setCrossDayMoveContext(null);
+        }, 400);
+
         // Optimistic update
         setWorkouts((prev) =>
           prev.map((w) =>
@@ -1028,19 +1059,36 @@ export default function PlannerPage() {
                                 items={dayWorkouts.map((w) => w.id)}
                                 strategy={verticalListSortingStrategy}
                               >
-                                {dayWorkouts.map((workout) => (
-                                  <SortableWorkoutCard
-                                    key={workout.id}
-                                    workout={workout}
-                                    isEditable={isEditable}
-                                    onDelete={() => handleDeleteWorkout(workout.id)}
-                                    onStatusChange={(status) =>
-                                      handleStatusChange(workout.id, status)
+                                {dayWorkouts.map((workout) => {
+                                  const dateStr = format(day, "yyyy-MM-dd");
+                                  // Determine shift animation for cross-day moves
+                                  let shiftAnimation: "up" | "down" | undefined;
+                                  if (
+                                    crossDayMoveContext &&
+                                    workout.id !== crossDayMoveContext.movedId
+                                  ) {
+                                    if (dateStr === crossDayMoveContext.sourceDate) {
+                                      shiftAnimation = "up"; // Fill gap left by moved card
+                                    } else if (dateStr === crossDayMoveContext.targetDate) {
+                                      shiftAnimation = "down"; // Make room for arriving card
                                     }
-                                    onMoveToDate={(date) => handleMoveToDate(workout.id, date)}
-                                    onDuplicate={(date) => handleDuplicate(workout, date)}
-                                  />
-                                ))}
+                                  }
+                                  return (
+                                    <SortableWorkoutCard
+                                      key={workout.id}
+                                      workout={workout}
+                                      isEditable={isEditable}
+                                      isRecentlyMoved={workout.id === recentlyMovedId}
+                                      shiftAnimation={shiftAnimation}
+                                      onDelete={() => handleDeleteWorkout(workout.id)}
+                                      onStatusChange={(status) =>
+                                        handleStatusChange(workout.id, status)
+                                      }
+                                      onMoveToDate={(date) => handleMoveToDate(workout.id, date)}
+                                      onDuplicate={(date) => handleDuplicate(workout, date)}
+                                    />
+                                  );
+                                })}
                               </SortableContext>
                             ) : (
                               <div
@@ -1330,6 +1378,8 @@ function StatusButton({
 function SortableWorkoutCard({
   workout,
   isEditable,
+  isRecentlyMoved,
+  shiftAnimation,
   onDelete,
   onStatusChange,
   onMoveToDate,
@@ -1337,6 +1387,8 @@ function SortableWorkoutCard({
 }: {
   workout: PlannedWorkout;
   isEditable: boolean;
+  isRecentlyMoved?: boolean;
+  shiftAnimation?: "up" | "down";
   onDelete: () => void;
   onStatusChange: (status: PlannedWorkout["status"]) => void;
   onMoveToDate?: (date: Date) => void;
@@ -1354,14 +1406,35 @@ function SortableWorkoutCard({
     isDragging,
   } = useSortable({ id: workout.id, disabled: !canDrag });
 
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0 : 1,
-  };
+  // Determine animation class: entry for moved card, shift for siblings
+  const animationClass = isRecentlyMoved
+    ? "planner-card-enter"
+    : shiftAnimation === "up"
+      ? "planner-card-shift-up"
+      : shiftAnimation === "down"
+        ? "planner-card-shift-down"
+        : undefined;
+
+  // When CSS animation is active, don't apply ANY inline transform/transition
+  // because inline styles override CSS animations. For same-day reordering,
+  // apply dnd-kit's transform with our transition.
+  const style: React.CSSProperties = animationClass
+    ? {
+        // Let CSS animation handle transform - don't set anything inline
+        ...(isDragging && { opacity: 0 }),
+      }
+    : {
+        transform: CSS.Transform.toString(transform),
+        transition: "transform 300ms cubic-bezier(0.25, 1, 0.5, 1)",
+        ...(isDragging && { opacity: 0 }),
+      };
 
   return (
-    <div ref={setNodeRef} style={style}>
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={animationClass}
+    >
       <WorkoutCardWithHandle
         workout={workout}
         isEditable={isEditable}
