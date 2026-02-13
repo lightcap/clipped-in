@@ -13,6 +13,27 @@ Before implementing features that interact with the Peloton API, read:
   - How to calculate actual FTP results from `performance_graph` endpoint
   - Sample code for fetching FTP test history
 
+## Dev Environment Setup
+
+The project uses self-hosted Supabase on Hetzner via [supabase-dev-infra](../supabase-dev-infra).
+
+```bash
+# One command to create stack, run migrations, seed data, and write .env.local:
+./scripts/setup-dev.sh [stack-name]
+```
+
+This creates a full Supabase stack with test accounts:
+- `matthew@thekerns.net` / `testpass123` (has FTP history + planned workouts)
+- `jane@test.dev` / `testpass123` (lighter data set)
+
+Prerequisites: `supabase-dev-infra` must be provisioned and bootstrapped (see its README).
+
+### Schema Note
+
+The local migrations use `peloton_ride_id` in `planned_workouts` but production
+Supabase Cloud uses `peloton_class_id`. If you see column name mismatches, this
+is the source. The local migrations are the source of truth for dev environments.
+
 ## Important Implementation Notes
 
 ### Authentication
