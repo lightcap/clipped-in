@@ -2,16 +2,45 @@
 
 A Peloton companion app for tracking FTP (Functional Threshold Power) history and other cycling metrics.
 
+## Tech Stack
+
+Next.js (App Router) · TypeScript · Supabase · Tailwind CSS · Vitest
+
+## Commands
+
+```bash
+npm run dev           # Start dev server on port 3002
+npm run build         # Production build
+npm test              # Run tests (Vitest, watch mode)
+npm run test:ui       # Tests with browser UI
+npm run test:coverage # Coverage report
+npm run lint          # ESLint
+```
+
+## Project Structure
+
+```
+src/
+  app/           # Next.js App Router pages
+    (auth)/      # Auth routes (login, callback)
+    (dashboard)/ # Dashboard routes
+    api/         # API routes
+  components/    # React components
+  hooks/         # Custom React hooks
+  lib/           # Core libraries
+    peloton/     # Peloton API client
+    supabase/    # Supabase client & helpers
+    stores/      # State management
+  test/          # Test utilities & setup
+  types/         # TypeScript types
+```
+
 ## Key Documentation
 
 Before implementing features that interact with the Peloton API, read:
 
-- **[Peloton API Findings](docs/peloton-api-findings.md)** - Comprehensive documentation of the Peloton API including:
-  - Authentication (Auth0 OAuth with JWT tokens in localStorage)
-  - FTP data retrieval and calculation
-  - Critical clarification: `ftp_info.ftp` is the baseline FTP going INTO a workout, not the result
-  - How to calculate actual FTP results from `performance_graph` endpoint
-  - Sample code for fetching FTP test history
+- **[Peloton API Findings](docs/peloton-api-findings.md)** - Full API docs (auth, endpoints, FTP calculation)
+- The `peloton-api` skill auto-loads Peloton conventions when editing relevant code
 
 ## Dev Environment Setup
 
