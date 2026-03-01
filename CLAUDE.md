@@ -17,6 +17,11 @@ npm run test:coverage # Coverage report
 npm run lint          # ESLint
 ```
 
+## Git Workflow
+
+- Never commit directly to main — a global hook blocks this
+- Use `commit-push-pr` skill (not `commit`) for the full branch + PR workflow
+
 ## Project Structure
 
 ```
