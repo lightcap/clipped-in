@@ -62,4 +62,5 @@ Peloton has a GraphQL endpoint at `https://gql-graphql-gateway.prod.k8s.onepelot
 
 ## Reference
 
-For full API documentation including token structure, auth endpoints, and sample code, see `docs/peloton-api-findings.md`.
+- `docs/peloton-api-findings.md` — Auth flow, token structure, FTP calculation, FTP history chain sample code
+- `docs/PELOTON_API_DOCUMENTATION.md` — Full endpoint reference: class search/details, workout history, GraphQL stack mutations, muscle groups, playlists, browse categories

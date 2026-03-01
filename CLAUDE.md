@@ -39,7 +39,8 @@ src/
 
 Before implementing features that interact with the Peloton API, read:
 
-- **[Peloton API Findings](docs/peloton-api-findings.md)** - Full API docs (auth, endpoints, FTP calculation)
+- **[Peloton API Findings](docs/peloton-api-findings.md)** - FTP calculation, auth flow, token structure, FTP history chain
+- **[Peloton API Documentation](docs/PELOTON_API_DOCUMENTATION.md)** - Full endpoint reference (classes, workouts, GraphQL stack, muscle groups, playlists)
 - The `peloton-api` skill auto-loads Peloton conventions when editing relevant code
 
 ## Dev Environment Setup
