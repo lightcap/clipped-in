@@ -139,6 +139,11 @@ for migration in "${PROJECT_DIR}"/supabase/migrations/*.sql; do
     > /dev/null 2>&1
 done
 
+# Restart PostgREST so it picks up schema changes
+echo "Reloading PostgREST schema cache..."
+# shellcheck disable=SC2086
+ssh $SSH_OPTS root@"${SERVER_IP}" "docker restart ${STACK_NAME}-rest" > /dev/null 2>&1
+
 echo ""
 echo "Migrations complete"
 
