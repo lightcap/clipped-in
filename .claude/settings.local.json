@@ -1,8 +1,38 @@
 {
   "permissions": {
     "allow": [
+      "Bash(curl:*)",
+      "Bash(gh issue create:*)",
+      "Bash(gh issue edit:*)",
+      "Bash(gh issue list:*)",
+      "Bash(gh issue view:*)",
+      "Bash(gh label list:*)",
+      "Bash(gh project field-list:*)",
+      "Bash(gh project item-add:*)",
+      "Bash(gh project item-edit:*)",
+      "Bash(gh project item-list:*)",
+      "Bash(gh project list:*)",
+      "Bash(git checkout:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm run:*)",
+      "Bash(npm test:*)",
+      "Bash(pkill:*)",
+      "Bash(python3:*)",
+      "Skill(pr-review-toolkit:review-pr)",
+      "mcp__plugin_playwright_playwright__browser_click",
+      "mcp__plugin_playwright_playwright__browser_evaluate",
       "mcp__plugin_playwright_playwright__browser_navigate",
-      "mcp__plugin_playwright_playwright__browser_evaluate"
+      "mcp__plugin_playwright_playwright__browser_snapshot",
+      "Bash(ls:*)",
+      "Skill(commit-commands:commit)",
+      "Bash(CLAUDE_FILE_PATH=\"/tmp/test-env-hook.env\" bash:*)",
+      "Bash(gh pr:*)",
+      "Bash(git pull:*)",
+      "Bash(git stash:*)",
+      "Bash(git add:*)",
+      "Bash(git push:*)",
+      "Bash(grep:*)",
+      "Bash(chmod +x:*)"
     ]
   }
 }
