@@ -127,6 +127,11 @@ TRACK_SQL
       > /dev/null 2>&1
   done
 
+  # Reload PostgREST schema cache so new columns are visible
+  # shellcheck disable=SC2086
+  ssh $SSH_OPTS "$SERVER" \
+    "${PSQL_CMD} -c \"NOTIFY pgrst, 'reload schema'\"" > /dev/null 2>&1
+
   echo "Migrations complete"
 
   # ── Seed data (only if no users exist) ──

@@ -139,6 +139,11 @@ for migration in "${PROJECT_DIR}"/supabase/migrations/*.sql; do
     > /dev/null 2>&1
 done
 
+# Reload PostgREST schema cache so new columns are visible
+# shellcheck disable=SC2086
+ssh $SSH_OPTS root@"${SERVER_IP}" \
+  "${PSQL_CMD} -c \"NOTIFY pgrst, 'reload schema'\"" > /dev/null 2>&1
+
 echo ""
 echo "Migrations complete"
 
