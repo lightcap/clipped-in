@@ -1,0 +1,7 @@
+services:
+  dtu-peloton:
+    build: .
+    ports:
+      - "4201:4201"
+    environment:
+      - PORT=4201

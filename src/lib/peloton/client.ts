@@ -10,8 +10,8 @@ import type {
   ModifyStackResult,
 } from "@/types/peloton";
 
-const PELOTON_API_URL = "https://api.onepeloton.com";
-const PELOTON_GRAPHQL_URL = "https://gql-graphql-gateway.prod.k8s.onepeloton.com/graphql";
+const PELOTON_API_URL = process.env.PELOTON_API_URL || "https://api.onepeloton.com";
+const PELOTON_GRAPHQL_URL = process.env.PELOTON_GRAPHQL_URL || "https://gql-graphql-gateway.prod.k8s.onepeloton.com/graphql";
 
 /**
  * Validate that a Peloton class/ride ID is in the expected format.
