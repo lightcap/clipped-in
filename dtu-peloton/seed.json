@@ -1,0 +1,470 @@
+{
+  "instructors": [
+    {
+      "id": "1697e6f580494740a5a1ca62b8b3f47c",
+      "name": "Alex Toussaint",
+      "image_url": "https://example.com/instructors/alex.jpg"
+    },
+    {
+      "id": "a8c56f162c964e9392568bc13828a3fb",
+      "name": "Robin Arzón",
+      "image_url": "https://example.com/instructors/robin.jpg"
+    },
+    {
+      "id": "c9fa21c2004c4544a7c35c28a6196c77",
+      "name": "Rad Lopez",
+      "image_url": "https://example.com/instructors/rad.jpg"
+    },
+    {
+      "id": "d4e5f6a7b8c9d0e1f2a3b4c5d6e70001",
+      "name": "Marcel Dinkins",
+      "image_url": "https://example.com/instructors/marcel.jpg"
+    },
+    {
+      "id": "d4e5f6a7b8c9d0e1f2a3b4c5d6e70002",
+      "name": "Bradley Rose",
+      "image_url": "https://example.com/instructors/bradley.jpg"
+    },
+    {
+      "id": "d4e5f6a7b8c9d0e1f2a3b4c5d6e70003",
+      "name": "Logan Aldridge",
+      "image_url": "https://example.com/instructors/logan.jpg"
+    },
+    {
+      "id": "d4e5f6a7b8c9d0e1f2a3b4c5d6e70004",
+      "name": "Joslyn Thompson Rule",
+      "image_url": "https://example.com/instructors/joslyn.jpg"
+    },
+    {
+      "id": "d4e5f6a7b8c9d0e1f2a3b4c5d6e70005",
+      "name": "Hannah Corbin",
+      "image_url": "https://example.com/instructors/hannah.jpg"
+    },
+    {
+      "id": "d4e5f6a7b8c9d0e1f2a3b4c5d6e70006",
+      "name": "Aditi Shah",
+      "image_url": "https://example.com/instructors/aditi.jpg"
+    },
+    {
+      "id": "d4e5f6a7b8c9d0e1f2a3b4c5d6e70007",
+      "name": "Kristin McGee",
+      "image_url": "https://example.com/instructors/kristin.jpg"
+    }
+  ],
+
+  "users": [
+    {
+      "id": "48bcbd2444f744138043812a9420bbe0",
+      "username": "lightcap",
+      "email": "matthew@thekerns.net",
+      "name": "Matt Kern",
+      "image_url": "https://example.com/profile/matt.jpg",
+      "cycling_ftp": 267,
+      "cycling_ftp_source": "ftp_workout_source",
+      "cycling_ftp_workout_id": "4e77e9a27f074a509fe08d4eb41e6b36",
+      "estimated_cycling_ftp": 270,
+      "created_at": 1577836800,
+      "token": "test-token-matt"
+    },
+    {
+      "id": "fake_peloton_user_002",
+      "username": "jane_rides",
+      "email": "jane@test.dev",
+      "name": "Jane Smith",
+      "image_url": "https://example.com/profile/jane.jpg",
+      "cycling_ftp": 195,
+      "cycling_ftp_source": "ftp_workout_source",
+      "cycling_ftp_workout_id": "fake_workout_jane_002",
+      "estimated_cycling_ftp": 200,
+      "created_at": 1580515200,
+      "token": "test-token-jane"
+    }
+  ],
+
+  "workouts": [
+    {
+      "id": "4e77e9a27f074a509fe08d4eb41e6b36",
+      "user_id": "48bcbd2444f744138043812a9420bbe0",
+      "created_at": 1736812800,
+      "status": "COMPLETE",
+      "fitness_discipline": "cycling",
+      "ride_id": "ftp_ride_001",
+      "ftp_info": {
+        "ftp": 219,
+        "ftp_source": "ftp_workout_source",
+        "ftp_workout_id": "096f513cf5914c0f8eef81c870e4779c"
+      },
+      "performance_graph": {
+        "duration": 1200,
+        "average_summaries": [
+          { "display_name": "Avg Output", "display_unit": "watts", "value": 281, "slug": "avg_output" },
+          { "display_name": "Avg Cadence", "display_unit": "rpm", "value": 92, "slug": "avg_cadence" },
+          { "display_name": "Avg Resistance", "display_unit": "%", "value": 52, "slug": "avg_resistance" }
+        ],
+        "summaries": [
+          { "display_name": "Total Output", "display_unit": "kj", "value": 337, "slug": "total_output" },
+          { "display_name": "Distance", "display_unit": "mi", "value": 8.4, "slug": "distance" },
+          { "display_name": "Calories", "display_unit": "kcal", "value": 310, "slug": "calories" }
+        ]
+      }
+    },
+    {
+      "id": "096f513cf5914c0f8eef81c870e4779c",
+      "user_id": "48bcbd2444f744138043812a9420bbe0",
+      "created_at": 1575417600,
+      "status": "COMPLETE",
+      "fitness_discipline": "cycling",
+      "ride_id": "ftp_ride_001",
+      "ftp_info": {
+        "ftp": 208,
+        "ftp_source": "ftp_workout_source",
+        "ftp_workout_id": null
+      },
+      "performance_graph": {
+        "duration": 1200,
+        "average_summaries": [
+          { "display_name": "Avg Output", "display_unit": "watts", "value": 231, "slug": "avg_output" },
+          { "display_name": "Avg Cadence", "display_unit": "rpm", "value": 88, "slug": "avg_cadence" }
+        ],
+        "summaries": [
+          { "display_name": "Total Output", "display_unit": "kj", "value": 277, "slug": "total_output" }
+        ]
+      }
+    },
+    {
+      "id": "fake_workout_jane_002",
+      "user_id": "fake_peloton_user_002",
+      "created_at": 1740700800,
+      "status": "COMPLETE",
+      "fitness_discipline": "cycling",
+      "ride_id": "ftp_ride_001",
+      "ftp_info": {
+        "ftp": 180,
+        "ftp_source": "ftp_workout_source",
+        "ftp_workout_id": "fake_workout_jane_001"
+      },
+      "performance_graph": {
+        "duration": 1200,
+        "average_summaries": [
+          { "display_name": "Avg Output", "display_unit": "watts", "value": 205, "slug": "avg_output" },
+          { "display_name": "Avg Cadence", "display_unit": "rpm", "value": 84, "slug": "avg_cadence" }
+        ],
+        "summaries": [
+          { "display_name": "Total Output", "display_unit": "kj", "value": 246, "slug": "total_output" }
+        ]
+      }
+    },
+    {
+      "id": "fake_workout_jane_001",
+      "user_id": "fake_peloton_user_002",
+      "created_at": 1735516800,
+      "status": "COMPLETE",
+      "fitness_discipline": "cycling",
+      "ride_id": "ftp_ride_001",
+      "ftp_info": {
+        "ftp": 0,
+        "ftp_source": null,
+        "ftp_workout_id": null
+      },
+      "performance_graph": {
+        "duration": 1200,
+        "average_summaries": [
+          { "display_name": "Avg Output", "display_unit": "watts", "value": 189, "slug": "avg_output" },
+          { "display_name": "Avg Cadence", "display_unit": "rpm", "value": 82, "slug": "avg_cadence" }
+        ],
+        "summaries": [
+          { "display_name": "Total Output", "display_unit": "kj", "value": 227, "slug": "total_output" }
+        ]
+      }
+    }
+  ],
+
+  "rides": [
+    {
+      "id": "ftp_ride_001",
+      "title": "20 min FTP Test Ride",
+      "description": "Find your Functional Threshold Power.",
+      "duration": 1200,
+      "difficulty_estimate": 8.5,
+      "image_url": "https://example.com/rides/ftp-test.jpg",
+      "instructor_id": "1697e6f580494740a5a1ca62b8b3f47c",
+      "fitness_discipline": "cycling",
+      "fitness_discipline_display_name": "Cycling"
+    },
+    {
+      "id": "923a0be458c449ffac3a589ba8aa1c63",
+      "title": "20 min HIIT Run",
+      "description": "High intensity intervals on the tread.",
+      "duration": 1200,
+      "difficulty_estimate": 7.8,
+      "image_url": "https://example.com/rides/hiit-run-20.jpg",
+      "instructor_id": "d4e5f6a7b8c9d0e1f2a3b4c5d6e70001",
+      "fitness_discipline": "running",
+      "fitness_discipline_display_name": "Running"
+    },
+    {
+      "id": "c4c804b5bc0c4f0cae75e257ef342ade",
+      "title": "30 min Walk + Run",
+      "description": "Alternating walk and run intervals.",
+      "duration": 1800,
+      "difficulty_estimate": 5.5,
+      "image_url": "https://example.com/rides/walkrun-30.jpg",
+      "instructor_id": "d4e5f6a7b8c9d0e1f2a3b4c5d6e70004",
+      "fitness_discipline": "running",
+      "fitness_discipline_display_name": "Running"
+    },
+    {
+      "id": "b2d6ae5708fa4344ab2703201fd0e893",
+      "title": "30 min Metal Ride",
+      "description": "Ride hard to heavy metal tracks.",
+      "duration": 1800,
+      "difficulty_estimate": 7.9,
+      "image_url": "https://example.com/rides/metal-30.jpg",
+      "instructor_id": "d4e5f6a7b8c9d0e1f2a3b4c5d6e70002",
+      "fitness_discipline": "cycling",
+      "fitness_discipline_display_name": "Cycling"
+    },
+    {
+      "id": "0948d1d92d1f4f9ea5b08e92aad5a21f",
+      "title": "30 min Walk + Run",
+      "description": "Walk and run intervals for endurance.",
+      "duration": 1800,
+      "difficulty_estimate": 5.2,
+      "image_url": "https://example.com/rides/walkrun-30b.jpg",
+      "instructor_id": "d4e5f6a7b8c9d0e1f2a3b4c5d6e70003",
+      "fitness_discipline": "running",
+      "fitness_discipline_display_name": "Running"
+    },
+    {
+      "id": "5566778899aabb5566778899aabb5566",
+      "title": "30 min Pop Ride",
+      "description": "Ride to your favorite pop hits.",
+      "duration": 1800,
+      "difficulty_estimate": 6.1,
+      "image_url": "https://example.com/rides/pop-30.jpg",
+      "instructor_id": "d4e5f6a7b8c9d0e1f2a3b4c5d6e70005",
+      "fitness_discipline": "cycling",
+      "fitness_discipline_display_name": "Cycling"
+    },
+    {
+      "id": "ddeeff0011223344ddeeff0011223344",
+      "title": "20 min Yoga Flow",
+      "description": "A flowing yoga sequence to build flexibility.",
+      "duration": 1200,
+      "difficulty_estimate": 4.5,
+      "image_url": "https://example.com/rides/yoga-20.jpg",
+      "instructor_id": "d4e5f6a7b8c9d0e1f2a3b4c5d6e70006",
+      "fitness_discipline": "yoga",
+      "fitness_discipline_display_name": "Yoga"
+    },
+    {
+      "id": "99887766554433229988776655443322",
+      "title": "10 min Cool Down Stretch",
+      "description": "Stretch and recover after your workout.",
+      "duration": 600,
+      "difficulty_estimate": 2.5,
+      "image_url": "https://example.com/rides/stretch-10.jpg",
+      "instructor_id": "d4e5f6a7b8c9d0e1f2a3b4c5d6e70007",
+      "fitness_discipline": "stretching",
+      "fitness_discipline_display_name": "Stretching"
+    },
+    {
+      "id": "d46adf451aae41609125438c52823dc8",
+      "title": "30 min Power Zone Ride",
+      "description": "Train in your power zones for maximum gains.",
+      "duration": 1800,
+      "difficulty_estimate": 7.2,
+      "image_url": "https://example.com/rides/pz-30.jpg",
+      "instructor_id": "1697e6f580494740a5a1ca62b8b3f47c",
+      "fitness_discipline": "cycling",
+      "fitness_discipline_display_name": "Cycling"
+    },
+    {
+      "id": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
+      "title": "45 min Climb Ride",
+      "description": "Push through heavy resistance climbs.",
+      "duration": 2700,
+      "difficulty_estimate": 8.1,
+      "image_url": "https://example.com/rides/climb-45.jpg",
+      "instructor_id": "a8c56f162c964e9392568bc13828a3fb",
+      "fitness_discipline": "cycling",
+      "fitness_discipline_display_name": "Cycling"
+    },
+    {
+      "id": "b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7",
+      "title": "20 min HIIT Ride",
+      "description": "High intensity intervals on the bike.",
+      "duration": 1200,
+      "difficulty_estimate": 7.8,
+      "image_url": "https://example.com/rides/hiit-20.jpg",
+      "instructor_id": "1697e6f580494740a5a1ca62b8b3f47c",
+      "fitness_discipline": "cycling",
+      "fitness_discipline_display_name": "Cycling"
+    },
+    {
+      "id": "c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8",
+      "title": "10 min Arms & Shoulders Strength",
+      "description": "Grab your weights for an upper-body burn.",
+      "duration": 600,
+      "difficulty_estimate": 5.5,
+      "image_url": "https://example.com/rides/arms-10.jpg",
+      "instructor_id": "c9fa21c2004c4544a7c35c28a6196c77",
+      "fitness_discipline": "strength",
+      "fitness_discipline_display_name": "Strength"
+    },
+    {
+      "id": "d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9",
+      "title": "20 min Full Body Strength",
+      "description": "A balanced full body workout.",
+      "duration": 1200,
+      "difficulty_estimate": 6.3,
+      "image_url": "https://example.com/rides/fb-20.jpg",
+      "instructor_id": "c9fa21c2004c4544a7c35c28a6196c77",
+      "fitness_discipline": "strength",
+      "fitness_discipline_display_name": "Strength"
+    },
+    {
+      "id": "f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1",
+      "title": "45 min Power Zone Endurance Ride",
+      "description": "Build endurance in zones 2-3.",
+      "duration": 2700,
+      "difficulty_estimate": 6.8,
+      "image_url": "https://example.com/rides/pze-45.jpg",
+      "instructor_id": "1697e6f580494740a5a1ca62b8b3f47c",
+      "fitness_discipline": "cycling",
+      "fitness_discipline_display_name": "Cycling"
+    },
+    {
+      "id": "a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2",
+      "title": "30 min Upper Body Strength",
+      "description": "Heavy weights, upper body focus.",
+      "duration": 1800,
+      "difficulty_estimate": 7.0,
+      "image_url": "https://example.com/rides/upper-30.jpg",
+      "instructor_id": "c9fa21c2004c4544a7c35c28a6196c77",
+      "fitness_discipline": "strength",
+      "fitness_discipline_display_name": "Strength"
+    },
+    {
+      "id": "b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3",
+      "title": "10 min Cool Down Ride",
+      "description": "Easy spin to cool down after your workout.",
+      "duration": 600,
+      "difficulty_estimate": 3.2,
+      "image_url": "https://example.com/rides/cooldown-10.jpg",
+      "instructor_id": "a8c56f162c964e9392568bc13828a3fb",
+      "fitness_discipline": "cycling",
+      "fitness_discipline_display_name": "Cycling"
+    },
+    {
+      "id": "c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4",
+      "title": "20 min Low Impact Ride",
+      "description": "Low resistance, high cadence recovery ride.",
+      "duration": 1200,
+      "difficulty_estimate": 5.0,
+      "image_url": "https://example.com/rides/lowimpact-20.jpg",
+      "instructor_id": "1697e6f580494740a5a1ca62b8b3f47c",
+      "fitness_discipline": "cycling",
+      "fitness_discipline_display_name": "Cycling"
+    },
+    {
+      "id": "e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6",
+      "title": "20 min Tabata Ride",
+      "description": "20 seconds on, 10 seconds off. Pure power.",
+      "duration": 1200,
+      "difficulty_estimate": 8.3,
+      "image_url": "https://example.com/rides/tabata-20.jpg",
+      "instructor_id": "1697e6f580494740a5a1ca62b8b3f47c",
+      "fitness_discipline": "cycling",
+      "fitness_discipline_display_name": "Cycling"
+    },
+    {
+      "id": "f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7",
+      "title": "45 min Intervals & Arms Ride",
+      "description": "Cycling intervals with light-weight arm segments.",
+      "duration": 2700,
+      "difficulty_estimate": 7.4,
+      "image_url": "https://example.com/rides/intervals-arms-45.jpg",
+      "instructor_id": "a8c56f162c964e9392568bc13828a3fb",
+      "fitness_discipline": "cycling",
+      "fitness_discipline_display_name": "Cycling"
+    },
+    {
+      "id": "a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8",
+      "title": "30 min Tempo Run",
+      "description": "Sustained effort at threshold pace.",
+      "duration": 1800,
+      "difficulty_estimate": 7.1,
+      "image_url": "https://example.com/rides/tempo-run-30.jpg",
+      "instructor_id": "d4e5f6a7b8c9d0e1f2a3b4c5d6e70001",
+      "fitness_discipline": "running",
+      "fitness_discipline_display_name": "Running"
+    },
+    {
+      "id": "b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9",
+      "title": "10 min Core Strength",
+      "description": "Quick core burner — planks, crunches, and twists.",
+      "duration": 600,
+      "difficulty_estimate": 5.8,
+      "image_url": "https://example.com/rides/core-10.jpg",
+      "instructor_id": "c9fa21c2004c4544a7c35c28a6196c77",
+      "fitness_discipline": "strength",
+      "fitness_discipline_display_name": "Strength"
+    },
+    {
+      "id": "c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0",
+      "title": "30 min EDM Ride",
+      "description": "Electronic beats to fuel your ride.",
+      "duration": 1800,
+      "difficulty_estimate": 6.9,
+      "image_url": "https://example.com/rides/edm-30.jpg",
+      "instructor_id": "a8c56f162c964e9392568bc13828a3fb",
+      "fitness_discipline": "cycling",
+      "fitness_discipline_display_name": "Cycling"
+    },
+    {
+      "id": "d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1",
+      "title": "20 min Beginner Ride",
+      "description": "New to the bike? Start here.",
+      "duration": 1200,
+      "difficulty_estimate": 3.5,
+      "image_url": "https://example.com/rides/beginner-20.jpg",
+      "instructor_id": "d4e5f6a7b8c9d0e1f2a3b4c5d6e70005",
+      "fitness_discipline": "cycling",
+      "fitness_discipline_display_name": "Cycling"
+    },
+    {
+      "id": "e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2",
+      "title": "30 min Glutes & Legs Strength",
+      "description": "Heavy lower-body focus — squats, lunges, deadlifts.",
+      "duration": 1800,
+      "difficulty_estimate": 7.5,
+      "image_url": "https://example.com/rides/glutes-legs-30.jpg",
+      "instructor_id": "c9fa21c2004c4544a7c35c28a6196c77",
+      "fitness_discipline": "strength",
+      "fitness_discipline_display_name": "Strength"
+    },
+    {
+      "id": "f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3",
+      "title": "15 min Warm Up Ride",
+      "description": "Get the legs spinning before your main workout.",
+      "duration": 900,
+      "difficulty_estimate": 3.0,
+      "image_url": "https://example.com/rides/warmup-15.jpg",
+      "instructor_id": "1697e6f580494740a5a1ca62b8b3f47c",
+      "fitness_discipline": "cycling",
+      "fitness_discipline_display_name": "Cycling"
+    },
+    {
+      "id": "a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4",
+      "title": "45 min Hip Hop Ride",
+      "description": "Ride to the best hip hop beats.",
+      "duration": 2700,
+      "difficulty_estimate": 7.6,
+      "image_url": "https://example.com/rides/hiphop-45.jpg",
+      "instructor_id": "1697e6f580494740a5a1ca62b8b3f47c",
+      "fitness_discipline": "cycling",
+      "fitness_discipline_display_name": "Cycling"
+    }
+  ]
+}

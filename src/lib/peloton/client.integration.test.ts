@@ -7,58 +7,46 @@
  * Run standalone:  npx vitest run src/lib/peloton/client.integration.test.ts
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { PelotonClient, encodeClassIdForGraphQL, decodeGraphQLClassId } from "./client";
+import { encodeClassIdForGraphQL, decodeGraphQLClassId } from "./client";
 import { server } from "@/test/setup";
 
-// --- Constants matching dtu-peloton seed data ---
+// --- Constants matching dtu-peloton seed.json (shared with supabase/seed.sql) ---
 const DTU_URL = "http://localhost:4201";
 const DTU_GQL_URL = "http://localhost:4201/graphql";
-const TOKEN = "test-token";
+const TOKEN_MATT = "test-token-matt";
+const TOKEN_JANE = "test-token-jane";
 
-const USER_ID = "efcac68d7abf4b83a89d347416d76089";
-const WORKOUT_1_ID = "4e77e9a27f074a509fe08d4eb41e6b36"; // most recent FTP test
-const WORKOUT_2_ID = "096f513cf5914c0f8eef81c870e4779c"; // first FTP test
+const MATT_USER_ID = "48bcbd2444f744138043812a9420bbe0";
+const JANE_USER_ID = "fake_peloton_user_002";
+const WORKOUT_1_ID = "4e77e9a27f074a509fe08d4eb41e6b36"; // Matt's most recent FTP test
+const WORKOUT_2_ID = "096f513cf5914c0f8eef81c870e4779c"; // Matt's first FTP test
 
 // Sample ride IDs from the seed data
 const RIDE_PZ_30 = "d46adf451aae41609125438c52823dc8"; // 30 min Power Zone
 const RIDE_CLIMB_45 = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6"; // 45 min Climb
 const RIDE_STRENGTH_10 = "c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8"; // 10 min Arms
 
-let client: PelotonClient;
-
 beforeAll(() => {
   // Disable MSW so real HTTP requests reach the digital twin
   server.close();
-
-  // Point PelotonClient at the digital twin by setting env vars
-  process.env.PELOTON_API_URL = DTU_URL;
-  process.env.PELOTON_GRAPHQL_URL = DTU_GQL_URL;
-
-  // Re-import to pick up env vars — PelotonClient reads them at module scope,
-  // but since the module is already loaded we need to reload it.
-  // Instead, we make raw fetch calls where env vars matter, and use
-  // the client for methods that go through this.fetch().
-  // Actually, since PELOTON_API_URL is captured at import time as a const,
-  // we need to work around that. We'll construct a thin wrapper.
-  client = new PelotonClient(TOKEN);
 });
 
 afterAll(() => {
-  delete process.env.PELOTON_API_URL;
-  delete process.env.PELOTON_GRAPHQL_URL;
   server.listen({ onUnhandledRequest: "bypass" });
 });
 
 // ---------------------------------------------------------------------------
-// Helper: make a direct fetch against the DTU to bypass the module-level const
+// Helper: make a direct fetch against the DTU
 // ---------------------------------------------------------------------------
-async function dtuFetch<T>(path: string, options?: RequestInit): Promise<T> {
+async function dtuFetch<T>(path: string, options?: RequestInit & { token?: string }): Promise<T> {
+  const token = options?.token ?? TOKEN_MATT;
+  const { token: _t, ...fetchOptions } = options ?? {};
   const res = await fetch(`${DTU_URL}${path}`, {
-    ...options,
+    ...fetchOptions,
     headers: {
-      Authorization: `Bearer ${TOKEN}`,
+      Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
-      ...options?.headers,
+      ...fetchOptions?.headers,
     },
   });
   if (!res.ok) {
@@ -67,11 +55,15 @@ async function dtuFetch<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-async function dtuGraphQL<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
+async function dtuGraphQL<T>(
+  query: string,
+  variables?: Record<string, unknown>,
+  token: string = TOKEN_MATT
+): Promise<T> {
   const res = await fetch(DTU_GQL_URL, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${TOKEN}`,
+      Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ query, variables }),
@@ -102,9 +94,16 @@ describe("Digital Twin Integration", () => {
       expect(res.status).toBe(401);
     });
 
-    it("should accept requests with a valid token", async () => {
+    it("should accept requests with Matt's token", async () => {
       const res = await fetch(`${DTU_URL}/api/me`, {
-        headers: { Authorization: `Bearer ${TOKEN}` },
+        headers: { Authorization: `Bearer ${TOKEN_MATT}` },
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it("should accept requests with Jane's token", async () => {
+      const res = await fetch(`${DTU_URL}/api/me`, {
+        headers: { Authorization: `Bearer ${TOKEN_JANE}` },
       });
       expect(res.status).toBe(200);
     });
@@ -112,30 +111,48 @@ describe("Digital Twin Integration", () => {
 
   // ---- GET /api/me ----
   describe("GET /api/me", () => {
-    it("should return the seeded user profile", async () => {
+    it("should return Matt's profile (matching seed.sql)", async () => {
       const user = await dtuFetch<{
         id: string;
         username: string;
         email: string;
+        name: string;
         cycling_ftp: number;
         cycling_ftp_source: string;
         cycling_ftp_workout_id: string;
         estimated_cycling_ftp: number;
       }>("/api/me");
 
-      expect(user.id).toBe(USER_ID);
-      expect(user.username).toBe("TestRider");
-      expect(user.email).toBe("test@example.com");
-      expect(user.cycling_ftp).toBe(176);
+      expect(user.id).toBe(MATT_USER_ID);
+      expect(user.username).toBe("lightcap");
+      expect(user.email).toBe("matthew@thekerns.net");
+      expect(user.name).toBe("Matt Kern");
+      expect(user.cycling_ftp).toBe(267);
       expect(user.cycling_ftp_source).toBe("ftp_workout_source");
       expect(user.cycling_ftp_workout_id).toBe(WORKOUT_1_ID);
-      expect(user.estimated_cycling_ftp).toBe(199);
+      expect(user.estimated_cycling_ftp).toBe(270);
+    });
+
+    it("should return Jane's profile (matching seed.sql)", async () => {
+      const user = await dtuFetch<{
+        id: string;
+        username: string;
+        email: string;
+        cycling_ftp: number;
+        estimated_cycling_ftp: number;
+      }>("/api/me", { token: TOKEN_JANE });
+
+      expect(user.id).toBe(JANE_USER_ID);
+      expect(user.username).toBe("jane_rides");
+      expect(user.email).toBe("jane@test.dev");
+      expect(user.cycling_ftp).toBe(195);
+      expect(user.estimated_cycling_ftp).toBe(200);
     });
   });
 
   // ---- GET /api/workout/:id ----
   describe("GET /api/workout/:id", () => {
-    it("should return the most recent FTP workout with correct baseline semantics", async () => {
+    it("should return Matt's most recent FTP workout with correct baseline semantics", async () => {
       const workout = await dtuFetch<{
         id: string;
         status: string;
@@ -147,28 +164,29 @@ describe("Digital Twin Integration", () => {
       expect(workout.id).toBe(WORKOUT_1_ID);
       expect(workout.status).toBe("COMPLETE");
       expect(workout.fitness_discipline).toBe("cycling");
-      // ftp_info.ftp is the BASELINE going into this test, not the result
-      expect(workout.ftp_info.ftp).toBe(183);
+      // ftp_info.ftp is the BASELINE going into this test (matching seed.sql baseline_ftp=219)
+      expect(workout.ftp_info.ftp).toBe(219);
       expect(workout.ftp_info.ftp_workout_id).toBe(WORKOUT_2_ID);
       expect(workout.ride.title).toBe("20 min FTP Test Ride");
       expect(workout.ride.duration).toBe(1200);
     });
 
-    it("should return the first FTP workout with ftp=0 (no prior baseline)", async () => {
+    it("should return Matt's first FTP workout with baseline=208 (from seed.sql)", async () => {
       const workout = await dtuFetch<{
         id: string;
-        ftp_info: { ftp: number; ftp_source: null; ftp_workout_id: null };
+        ftp_info: { ftp: number; ftp_source: string; ftp_workout_id: string | null };
       }>(`/api/workout/${WORKOUT_2_ID}`);
 
       expect(workout.id).toBe(WORKOUT_2_ID);
-      expect(workout.ftp_info.ftp).toBe(0);
-      expect(workout.ftp_info.ftp_source).toBeNull();
+      // Baseline going into this test was 208 (from seed.sql)
+      expect(workout.ftp_info.ftp).toBe(208);
+      // This is the end of the chain — no prior workout
       expect(workout.ftp_info.ftp_workout_id).toBeNull();
     });
 
     it("should return 404 for a non-existent workout", async () => {
       const res = await fetch(`${DTU_URL}/api/workout/nonexistent`, {
-        headers: { Authorization: `Bearer ${TOKEN}` },
+        headers: { Authorization: `Bearer ${TOKEN_MATT}` },
       });
       expect(res.status).toBe(404);
     });
@@ -176,7 +194,7 @@ describe("Digital Twin Integration", () => {
 
   // ---- GET /api/workout/:id/performance_graph ----
   describe("GET /api/workout/:id/performance_graph", () => {
-    it("should return performance data for workout 1", async () => {
+    it("should return performance data for workout 1 (avg_output=281)", async () => {
       const perf = await dtuFetch<{
         duration: number;
         average_summaries: Array<{ slug: string; value: number; display_unit: string }>;
@@ -187,39 +205,37 @@ describe("Digital Twin Integration", () => {
 
       const avgOutput = perf.average_summaries.find((s) => s.slug === "avg_output");
       expect(avgOutput).toBeDefined();
-      expect(avgOutput!.value).toBe(185);
+      expect(avgOutput!.value).toBe(281); // matching seed.sql avg_output=281
       expect(avgOutput!.display_unit).toBe("watts");
 
-      // Validate FTP calculation: 185 * 0.95 = 175.75 → rounds to 176
+      // Validate FTP calculation: 281 * 0.95 = 266.95 → rounds to 267 (matching seed.sql)
       const calculatedFtp = Math.round(avgOutput!.value * 0.95);
-      expect(calculatedFtp).toBe(176);
+      expect(calculatedFtp).toBe(267);
 
       expect(perf.summaries.length).toBeGreaterThan(0);
     });
 
-    it("should return performance data for workout 2", async () => {
+    it("should return performance data for workout 2 (avg_output=231)", async () => {
       const perf = await dtuFetch<{
         average_summaries: Array<{ slug: string; value: number }>;
       }>(`/api/workout/${WORKOUT_2_ID}/performance_graph`);
 
       const avgOutput = perf.average_summaries.find((s) => s.slug === "avg_output");
       expect(avgOutput).toBeDefined();
-      expect(avgOutput!.value).toBe(193);
+      expect(avgOutput!.value).toBe(231); // matching seed.sql avg_output=231
 
-      // FTP = 193 * 0.95 = 183.35 → rounds to 183
-      expect(Math.round(avgOutput!.value * 0.95)).toBe(183);
+      // FTP = 231 * 0.95 = 219.45 → rounds to 219 (matching seed.sql calculated_ftp=219)
+      expect(Math.round(avgOutput!.value * 0.95)).toBe(219);
     });
   });
 
   // ---- FTP History Chain ----
   describe("FTP History Chain", () => {
-    it("should walk the full FTP workout chain and calculate correct FTP values", async () => {
-      // Start from the user's cycling_ftp_workout_id
+    it("should walk Matt's full FTP workout chain (matching seed.sql)", async () => {
       const user = await dtuFetch<{ cycling_ftp_workout_id: string }>("/api/me");
       const startId = user.cycling_ftp_workout_id;
       expect(startId).toBe(WORKOUT_1_ID);
 
-      // Walk the chain manually
       const chain: Array<{ workoutId: string; avgOutput: number; calculatedFtp: number; baselineFtp: number }> = [];
       let currentId: string | null = startId;
 
@@ -248,34 +264,33 @@ describe("Digital Twin Integration", () => {
       // Should have 2 workouts in the chain
       expect(chain).toHaveLength(2);
 
-      // Most recent test: avg=185, FTP=176, baseline was 183
+      // Most recent test: avg=281, FTP=267, baseline was 219
       expect(chain[0].workoutId).toBe(WORKOUT_1_ID);
-      expect(chain[0].avgOutput).toBe(185);
-      expect(chain[0].calculatedFtp).toBe(176);
-      expect(chain[0].baselineFtp).toBe(183);
+      expect(chain[0].avgOutput).toBe(281);
+      expect(chain[0].calculatedFtp).toBe(267);
+      expect(chain[0].baselineFtp).toBe(219);
 
-      // First test: avg=193, FTP=183, baseline was 0 (first test)
+      // First test: avg=231, FTP=219, baseline was 208
       expect(chain[1].workoutId).toBe(WORKOUT_2_ID);
-      expect(chain[1].avgOutput).toBe(193);
-      expect(chain[1].calculatedFtp).toBe(183);
-      expect(chain[1].baselineFtp).toBe(0);
+      expect(chain[1].avgOutput).toBe(231);
+      expect(chain[1].calculatedFtp).toBe(219);
+      expect(chain[1].baselineFtp).toBe(208);
     });
   });
 
   // ---- GET /api/user/:id/workouts ----
   describe("GET /api/user/:id/workouts", () => {
-    it("should return paginated workout list for the user", async () => {
+    it("should return paginated workout list for Matt", async () => {
       const result = await dtuFetch<{
         data: Array<{ id: string; fitness_discipline: string }>;
         page: number;
         page_count: number;
-      }>(`/api/user/${USER_ID}/workouts`);
+      }>(`/api/user/${MATT_USER_ID}/workouts`);
 
       expect(result.data).toBeInstanceOf(Array);
       expect(result.data.length).toBeGreaterThan(0);
       expect(result.page).toBe(0);
 
-      // All workouts should belong to the user
       for (const workout of result.data) {
         expect(workout.id).toBeTruthy();
         expect(workout.fitness_discipline).toBeTruthy();
@@ -293,8 +308,9 @@ describe("Digital Twin Integration", () => {
         limit: number;
       }>("/api/v2/ride/archived");
 
-      expect(result.data.length).toBeGreaterThan(0);
-      expect(result.total).toBe(result.data.length);
+      // seed.json has 26 rides total, default page limit is 20
+      expect(result.total).toBe(26);
+      expect(result.data.length).toBe(20); // capped by default limit
     });
 
     it("should filter by fitness_discipline=cycling", async () => {
@@ -321,6 +337,18 @@ describe("Digital Twin Integration", () => {
       }
     });
 
+    it("should filter by fitness_discipline=running", async () => {
+      const result = await dtuFetch<{
+        data: Array<{ fitness_discipline: string }>;
+        total: number;
+      }>("/api/v2/ride/archived?fitness_discipline=running");
+
+      expect(result.data.length).toBeGreaterThan(0);
+      for (const ride of result.data) {
+        expect(ride.fitness_discipline).toBe("running");
+      }
+    });
+
     it("should filter by duration", async () => {
       const result = await dtuFetch<{
         data: Array<{ duration: number }>;
@@ -335,8 +363,8 @@ describe("Digital Twin Integration", () => {
     it("should filter by instructor_id", async () => {
       const instructorId = "1697e6f580494740a5a1ca62b8b3f47c"; // Alex Toussaint
       const result = await dtuFetch<{
-        data: Array<{ instructor_id: string; instructor: { name: string } }>;
-      }>(`/api/v2/ride/archived?fitness_discipline=cycling&instructor_id=${instructorId}`);
+        data: Array<{ instructor_id: string }>;
+      }>(`/api/v2/ride/archived?instructor_id=${instructorId}`);
 
       expect(result.data.length).toBeGreaterThan(0);
       for (const ride of result.data) {
@@ -351,13 +379,13 @@ describe("Digital Twin Integration", () => {
         limit: number;
         page: number;
         page_count: number;
-      }>("/api/v2/ride/archived?limit=2&page=0");
+      }>("/api/v2/ride/archived?limit=5&page=0");
 
-      expect(result.data).toHaveLength(2);
-      expect(result.limit).toBe(2);
+      expect(result.data).toHaveLength(5);
+      expect(result.limit).toBe(5);
       expect(result.page).toBe(0);
       expect(result.page_count).toBeGreaterThan(1);
-      expect(result.total).toBeGreaterThan(2);
+      expect(result.total).toBeGreaterThan(5);
     });
   });
 
@@ -368,14 +396,14 @@ describe("Digital Twin Integration", () => {
         id: string;
         classes: Array<{ id: string }>;
         total_classes: number;
-      }>(`/api/user/${USER_ID}/stack`);
+      }>(`/api/user/${MATT_USER_ID}/stack`);
 
       expect(stack.classes).toHaveLength(0);
       expect(stack.total_classes).toBe(0);
     });
 
     it("should add a ride to the stack", async () => {
-      await dtuFetch(`/api/user/${USER_ID}/stack`, {
+      await dtuFetch(`/api/user/${MATT_USER_ID}/stack`, {
         method: "POST",
         body: JSON.stringify({ peloton_class_id: RIDE_PZ_30 }),
       });
@@ -383,7 +411,7 @@ describe("Digital Twin Integration", () => {
       const stack = await dtuFetch<{
         classes: Array<{ id: string; title: string }>;
         total_classes: number;
-      }>(`/api/user/${USER_ID}/stack`);
+      }>(`/api/user/${MATT_USER_ID}/stack`);
 
       expect(stack.total_classes).toBe(1);
       expect(stack.classes[0].id).toBe(RIDE_PZ_30);
@@ -391,7 +419,7 @@ describe("Digital Twin Integration", () => {
     });
 
     it("should not add duplicate rides", async () => {
-      await dtuFetch(`/api/user/${USER_ID}/stack`, {
+      await dtuFetch(`/api/user/${MATT_USER_ID}/stack`, {
         method: "POST",
         body: JSON.stringify({ peloton_class_id: RIDE_PZ_30 }),
       });
@@ -399,13 +427,13 @@ describe("Digital Twin Integration", () => {
       const stack = await dtuFetch<{
         classes: Array<{ id: string }>;
         total_classes: number;
-      }>(`/api/user/${USER_ID}/stack`);
+      }>(`/api/user/${MATT_USER_ID}/stack`);
 
       expect(stack.total_classes).toBe(1);
     });
 
     it("should add a second ride and preserve order", async () => {
-      await dtuFetch(`/api/user/${USER_ID}/stack`, {
+      await dtuFetch(`/api/user/${MATT_USER_ID}/stack`, {
         method: "POST",
         body: JSON.stringify({ peloton_class_id: RIDE_CLIMB_45 }),
       });
@@ -413,7 +441,7 @@ describe("Digital Twin Integration", () => {
       const stack = await dtuFetch<{
         classes: Array<{ id: string }>;
         total_classes: number;
-      }>(`/api/user/${USER_ID}/stack`);
+      }>(`/api/user/${MATT_USER_ID}/stack`);
 
       expect(stack.total_classes).toBe(2);
       expect(stack.classes[0].id).toBe(RIDE_PZ_30);
@@ -421,24 +449,24 @@ describe("Digital Twin Integration", () => {
     });
 
     it("should remove a ride from the stack", async () => {
-      await dtuFetch(`/api/user/${USER_ID}/stack/${RIDE_PZ_30}`, {
+      await dtuFetch(`/api/user/${MATT_USER_ID}/stack/${RIDE_PZ_30}`, {
         method: "DELETE",
       });
 
       const stack = await dtuFetch<{
         classes: Array<{ id: string }>;
         total_classes: number;
-      }>(`/api/user/${USER_ID}/stack`);
+      }>(`/api/user/${MATT_USER_ID}/stack`);
 
       expect(stack.total_classes).toBe(1);
       expect(stack.classes[0].id).toBe(RIDE_CLIMB_45);
     });
 
     it("should reject adding a non-existent ride", async () => {
-      const res = await fetch(`${DTU_URL}/api/user/${USER_ID}/stack`, {
+      const res = await fetch(`${DTU_URL}/api/user/${MATT_USER_ID}/stack`, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${TOKEN}`,
+          Authorization: `Bearer ${TOKEN_MATT}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ peloton_class_id: "nonexistent_ride_id_12345678" }),
@@ -446,17 +474,15 @@ describe("Digital Twin Integration", () => {
       expect(res.status).toBe(404);
     });
 
-    // Clean up: remove remaining items via GraphQL ModifyStack (clear)
     it("should clear the stack via REST delete", async () => {
-      // Remove remaining ride
-      await dtuFetch(`/api/user/${USER_ID}/stack/${RIDE_CLIMB_45}`, {
+      await dtuFetch(`/api/user/${MATT_USER_ID}/stack/${RIDE_CLIMB_45}`, {
         method: "DELETE",
       });
 
       const stack = await dtuFetch<{
         classes: Array<{ id: string }>;
         total_classes: number;
-      }>(`/api/user/${USER_ID}/stack`);
+      }>(`/api/user/${MATT_USER_ID}/stack`);
 
       expect(stack.total_classes).toBe(0);
     });
@@ -661,7 +687,6 @@ describe("Digital Twin Integration", () => {
       const encoded = encodeClassIdForGraphQL(RIDE_PZ_30);
       expect(encoded).toBeTruthy();
 
-      // Should be valid base64
       const decoded = Buffer.from(encoded, "base64").toString("utf-8");
       const parsed = JSON.parse(decoded);
       expect(parsed.ride_id).toBe(RIDE_PZ_30);
@@ -675,8 +700,6 @@ describe("Digital Twin Integration", () => {
     });
 
     it("the digital twin correctly decodes our base64 encoding", async () => {
-      // This is the critical integration test: does the DTU decode the same
-      // base64 format that encodeClassIdForGraphQL produces?
       const encodedId = encodeClassIdForGraphQL(RIDE_STRENGTH_10);
 
       const data = await dtuGraphQL<{
@@ -698,7 +721,6 @@ describe("Digital Twin Integration", () => {
         { input: { pelotonClassId: encodedId } }
       );
 
-      // The DTU should have decoded the base64, extracted ride_id, and returned it
       const returnedId = data.addClassToStack.userStack.stackedClassList.find(
         (c) => c.pelotonClass.classId === RIDE_STRENGTH_10
       );
@@ -730,7 +752,7 @@ describe("Digital Twin Integration", () => {
       const restStack = await dtuFetch<{
         classes: Array<{ id: string }>;
         total_classes: number;
-      }>(`/api/user/${USER_ID}/stack`);
+      }>(`/api/user/${MATT_USER_ID}/stack`);
 
       expect(restStack.total_classes).toBe(1);
       expect(restStack.classes[0].id).toBe(RIDE_PZ_30);
@@ -755,7 +777,7 @@ describe("Digital Twin Integration", () => {
       expect(gqlData.viewUserStack.numClasses).toBe(1);
       expect(gqlData.viewUserStack.userStack.stackedClassList[0].pelotonClass.classId).toBe(RIDE_PZ_30);
 
-      // Clean up via GraphQL
+      // Clean up
       await dtuGraphQL(
         `mutation ModifyStack($input: ModifyStackInput!) {
           modifyStack(input: $input) { numClasses }
@@ -777,7 +799,28 @@ describe("Digital Twin Integration", () => {
       const avgOutput = perf.average_summaries.find((s) => s.slug === "avg_output")!.value;
       const calculatedFtp = Math.round(avgOutput * 0.95);
 
+      // 281 * 0.95 = 266.95 → 267 = user.cycling_ftp
       expect(user.cycling_ftp).toBe(calculatedFtp);
+    });
+
+    it("seed data is consistent across both users", async () => {
+      // Jane's FTP should also be calculable from her workout chain
+      const jane = await dtuFetch<{
+        cycling_ftp: number;
+        cycling_ftp_workout_id: string;
+      }>("/api/me", { token: TOKEN_JANE });
+
+      const perf = await dtuFetch<{
+        average_summaries: Array<{ slug: string; value: number }>;
+      }>(`/api/workout/${jane.cycling_ftp_workout_id}/performance_graph`, {
+        token: TOKEN_JANE,
+      });
+
+      const avgOutput = perf.average_summaries.find((s) => s.slug === "avg_output")!.value;
+      const calculatedFtp = Math.round(avgOutput * 0.95);
+
+      // 205 * 0.95 = 194.75 → 195 = jane.cycling_ftp
+      expect(jane.cycling_ftp).toBe(calculatedFtp);
     });
   });
 });
