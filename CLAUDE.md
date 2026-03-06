@@ -63,11 +63,22 @@ This creates a full Supabase stack with test accounts:
 
 Prerequisites: `supabase-dev-infra` must be provisioned and bootstrapped (see its README).
 
+### Preview Environments (Vercel)
+
+Each PR automatically gets its own Supabase database on Hetzner via the `preview-db` GitHub Action.
+
+- **PR opened/pushed:** Stack `pr-<number>` created, migrations + seed run, Vercel env vars set
+- **PR closed/merged:** Stack destroyed, Vercel env vars removed
+- **No action needed** — fully automated via `.github/workflows/preview-db.yml`
+- Preview stacks run the branch's own migrations, so schema changes are tested in isolation
+
+Required GitHub secrets: `DEV_INFRA_SSH_KEY`, `DEV_INFRA_SERVER_IP`, `DEV_INFRA_DOMAIN`, `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`
+
 ### Schema Note
 
 The local migrations use `peloton_ride_id` in `planned_workouts` but production
 Supabase Cloud uses `peloton_class_id`. If you see column name mismatches, this
-is the source. The local migrations are the source of truth for dev environments.
+is the source. The local migrations are the source of truth for dev/preview environments.
 
 ## Important Implementation Notes
 
