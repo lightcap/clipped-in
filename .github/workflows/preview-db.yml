@@ -1,0 +1,132 @@
+name: Preview DB
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+jobs:
+  preview-db-up:
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create preview database
+        id: preview-db
+        run: |
+          OUTPUT=$(./scripts/preview-db.sh up ${{ github.event.pull_request.number }})
+          echo "$OUTPUT"
+
+          echo "supabase_url=$(echo "$OUTPUT" | grep '^NEXT_PUBLIC_SUPABASE_URL=' | cut -d= -f2-)" >> "$GITHUB_OUTPUT"
+          echo "supabase_anon_key=$(echo "$OUTPUT" | grep '^NEXT_PUBLIC_SUPABASE_ANON_KEY=' | cut -d= -f2-)" >> "$GITHUB_OUTPUT"
+          echo "supabase_service_role_key=$(echo "$OUTPUT" | grep '^SUPABASE_SERVICE_ROLE_KEY=' | cut -d= -f2-)" >> "$GITHUB_OUTPUT"
+        env:
+          DEV_INFRA_SSH_KEY: ${{ secrets.DEV_INFRA_SSH_KEY }}
+          DEV_INFRA_SERVER_IP: ${{ secrets.DEV_INFRA_SERVER_IP }}
+          DEV_INFRA_DOMAIN: ${{ secrets.DEV_INFRA_DOMAIN }}
+
+      - name: Set Vercel preview env vars
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          PR_BRANCH: ${{ github.head_ref }}
+          SUPABASE_URL: ${{ steps.preview-db.outputs.supabase_url }}
+          SUPABASE_ANON_KEY: ${{ steps.preview-db.outputs.supabase_anon_key }}
+          SERVICE_ROLE_KEY: ${{ steps.preview-db.outputs.supabase_service_role_key }}
+        run: |
+          API_BASE="https://api.vercel.com"
+          AUTH_HEADER="Authorization: Bearer ${VERCEL_TOKEN}"
+
+          # Fetch existing env vars for this project once
+          EXISTING=$(curl -s -H "$AUTH_HEADER" \
+            "${API_BASE}/v9/projects/${VERCEL_PROJECT_ID}/env?teamId=${VERCEL_ORG_ID}")
+
+          set_vercel_env() {
+            local key="$1"
+            local value="$2"
+
+            # Find existing env var ID for this key + branch
+            local env_id
+            env_id=$(echo "$EXISTING" | jq -r \
+              --arg key "$key" \
+              --arg branch "$PR_BRANCH" \
+              '.envs[] | select(.key == $key and .gitBranch == $branch) | .id // empty')
+
+            if [[ -n "$env_id" ]]; then
+              echo "Updating ${key} for branch ${PR_BRANCH}..."
+              curl -s -X PATCH \
+                -H "$AUTH_HEADER" \
+                -H "Content-Type: application/json" \
+                -d "$(jq -n --arg val "$value" '{value: $val}')" \
+                "${API_BASE}/v9/projects/${VERCEL_PROJECT_ID}/env/${env_id}?teamId=${VERCEL_ORG_ID}" \
+                > /dev/null
+            else
+              echo "Creating ${key} for branch ${PR_BRANCH}..."
+              curl -s -X POST \
+                -H "$AUTH_HEADER" \
+                -H "Content-Type: application/json" \
+                -d "$(jq -n \
+                  --arg key "$key" \
+                  --arg val "$value" \
+                  --arg branch "$PR_BRANCH" \
+                  '{key: $key, value: $val, type: "encrypted", target: ["preview"], gitBranch: $branch}')" \
+                "${API_BASE}/v9/projects/${VERCEL_PROJECT_ID}/env?teamId=${VERCEL_ORG_ID}" \
+                > /dev/null
+            fi
+          }
+
+          set_vercel_env "NEXT_PUBLIC_SUPABASE_URL" "$SUPABASE_URL"
+          set_vercel_env "NEXT_PUBLIC_SUPABASE_ANON_KEY" "$SUPABASE_ANON_KEY"
+          set_vercel_env "SUPABASE_SERVICE_ROLE_KEY" "$SERVICE_ROLE_KEY"
+
+          echo "Vercel env vars configured for branch ${PR_BRANCH}"
+
+  preview-db-down:
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Destroy preview database
+        run: ./scripts/preview-db.sh down ${{ github.event.pull_request.number }}
+        env:
+          DEV_INFRA_SSH_KEY: ${{ secrets.DEV_INFRA_SSH_KEY }}
+          DEV_INFRA_SERVER_IP: ${{ secrets.DEV_INFRA_SERVER_IP }}
+          DEV_INFRA_DOMAIN: ${{ secrets.DEV_INFRA_DOMAIN }}
+
+      - name: Remove Vercel preview env vars
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          PR_BRANCH: ${{ github.head_ref }}
+        run: |
+          API_BASE="https://api.vercel.com"
+          AUTH_HEADER="Authorization: Bearer ${VERCEL_TOKEN}"
+
+          EXISTING=$(curl -s -H "$AUTH_HEADER" \
+            "${API_BASE}/v9/projects/${VERCEL_PROJECT_ID}/env?teamId=${VERCEL_ORG_ID}")
+
+          for key in NEXT_PUBLIC_SUPABASE_URL NEXT_PUBLIC_SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY; do
+            env_id=$(echo "$EXISTING" | jq -r \
+              --arg key "$key" \
+              --arg branch "$PR_BRANCH" \
+              '.envs[] | select(.key == $key and .gitBranch == $branch) | .id // empty')
+
+            if [[ -n "$env_id" ]]; then
+              echo "Removing ${key} for branch ${PR_BRANCH}..."
+              curl -s -X DELETE \
+                -H "$AUTH_HEADER" \
+                "${API_BASE}/v9/projects/${VERCEL_PROJECT_ID}/env/${env_id}?teamId=${VERCEL_ORG_ID}" \
+                > /dev/null
+            else
+              echo "No env var found for ${key} on branch ${PR_BRANCH}, skipping"
+            fi
+          done
+
+          echo "Vercel env vars cleaned up for branch ${PR_BRANCH}"
